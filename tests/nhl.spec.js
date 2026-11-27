@@ -38,7 +38,7 @@ test.describe('San Jose Sharks (NHL)', () => {
     expect(await page.locator('.tile').count()).toBeGreaterThanOrEqual(8);
     await expect(page.locator('.tile .tl').first()).toHaveText('Goals / game');
     await expect(page.locator('[data-cat]')).toHaveText(['Skaters', 'Goalies']);
-    await expect(page.locator('.ptable thead th').nth(3)).toContainText('PTS');
+    await expect(page.locator('.ptable thead th').nth(4)).toContainText('PTS'); // Player, GP, G, A, PTS
     await page.locator('[data-cat="goalkeeping"]').click();
     await expect(page.locator('.ptable thead')).toContainText('SV%');
   });
