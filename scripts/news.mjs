@@ -7,7 +7,7 @@
 import { writeFile, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
-const UA = 'Mozilla/5.0 (compatible; cleveland-sports-news/1.0; +https://github.com/charliehartel/cleveland-sports)';
+const UA = 'Mozilla/5.0 (compatible; my-sports-news/1.0; +https://github.com/charliehartel/my-sports)';
 const DAYS = 14;              // keep two weeks of news
 const PER_TEAM = 80;          // newest items kept per team
 

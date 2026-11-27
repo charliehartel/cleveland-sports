@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Cleveland Sports</title>
+<title>My Sports</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="CLE Sports">
+<meta name="apple-mobile-web-app-title" content="My Sports">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#121212">
 <link rel="apple-touch-icon" href="icon-180.png">
@@ -45,9 +45,11 @@ button{font:inherit;color:inherit}
 header.top{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--border)}
 header.top .wrap{display:flex;align-items:center;gap:12px;padding-top:calc(12px + env(safe-area-inset-top));padding-bottom:12px}
 .brand{font-weight:800;font-size:18px;letter-spacing:-.01em;text-decoration:none;display:flex;align-items:center;gap:8px}
-.brand select{font:inherit;font-weight:800;font-size:18px;letter-spacing:-.01em;color:var(--text);background:transparent;border:none;padding:2px 22px 2px 0;cursor:pointer;
+.brand .appname{text-decoration:none;color:var(--text);white-space:nowrap}
+@media (max-width:440px){.updated{display:none}}
+.brand select{font:inherit;font-weight:600;font-size:14px;color:var(--text);background-color:var(--surface);border:1px solid var(--border);border-radius:999px;padding:4px 26px 4px 12px;cursor:pointer;
   appearance:none;-webkit-appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);
-  background-position:calc(100% - 9px) 55%,calc(100% - 4px) 55%;background-size:5px 5px,5px 5px;background-repeat:no-repeat}
+  background-position:calc(100% - 15px) 55%,calc(100% - 10px) 55%;background-size:5px 5px,5px 5px;background-repeat:no-repeat}
 .brand select option{color:#000;font-size:15px;font-weight:600}
 .visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .brand .dot{width:10px;height:10px;border-radius:3px;background:linear-gradient(135deg,var(--cavs),var(--browns) 50%,var(--guardians))}
@@ -291,8 +293,8 @@ details.acc .tablewrap{max-width:620px}
 </head>
 <body>
 <header class="top"><div class="wrap">
-  <label class="brand"><span class="dot"></span><span class="visually-hidden">Teams</span>
-    <select id="view" aria-label="Choose teams"></select></label>
+  <div class="brand"><span class="dot"></span><a class="appname" href="#/">My Sports</a>
+    <label><span class="visually-hidden">Region</span><select id="view" aria-label="Region"></select></label></div>
   <span class="spacer"></span>
   <span class="updated" id="updated"></span>
   <button class="iconbtn" id="refresh" title="Refresh now" aria-label="Refresh now">↻</button>
@@ -304,12 +306,12 @@ details.acc .tablewrap{max-width:620px}
 // Each view is a set of teams. Cleveland is the default; open ?view=bayarea (or the bayarea/ folder) for the other one.
 // news:true shows the news feed collected by scripts/news.mjs (its TEAMS list must include the view's team keys).
 const VIEWS = {
-  cleveland: { name:'Cleveland Sports', short:'CLE Sports', local:'Cleveland-area', icon:'icon-180.png', news:true, teams:[
+  cleveland: { name:'Cleveland', local:'Cleveland-area', news:true, teams:[
     { key:'cavs',      label:'Cavaliers', league:'nba', sport:'basketball', abbr:'cle', id:'5', color:'var(--cavs)' },
     { key:'browns',    label:'Browns',    league:'nfl', sport:'football',   abbr:'cle', id:'5', color:'var(--browns)' },
     { key:'guardians', label:'Guardians', league:'mlb', sport:'baseball',   abbr:'cle', id:'5', color:'var(--guardians)' },
   ]},
-  bayarea: { name:'Bay Area Sports', short:'Bay Sports', local:'Bay Area', icon:'icon-bayarea-180.png', news:true, teams:[
+  bayarea: { name:'Bay Area', local:'Bay Area', news:true, teams:[
     { key:'warriors',  label:'Warriors',  league:'nba', sport:'basketball', abbr:'gs',  id:'9',  color:'var(--warriors)' },
     { key:'niners',    label:'49ers',     league:'nfl', sport:'football',   abbr:'sf',  id:'25', color:'var(--niners)' },
     { key:'giants',    label:'Giants',    league:'mlb', sport:'baseball',   abbr:'sf',  id:'26', color:'var(--giants)' },
@@ -321,8 +323,9 @@ const VIEWS = {
 const VIEW_KEY = Object.hasOwn(VIEWS, new URLSearchParams(location.search).get('view')) ? new URLSearchParams(location.search).get('view') : 'cleveland';
 const VIEW = VIEWS[VIEW_KEY];
 const TEAMS = VIEW.teams;
-// The page's title, header and home-screen name/icon follow the view.
-document.title = VIEW.name;
+const APP_NAME = 'My Sports';
+// The page title names the region; the app name and home-screen icon are the same for every region.
+document.title = `${APP_NAME} · ${VIEW.name}`;
 // Header title is a selector; choosing another view reloads the page with ?view=… (Cleveland is the plain address).
 (() => {
   const sel = document.getElementById('view');
@@ -331,8 +334,6 @@ document.title = VIEW.name;
   sel.onchange = () => { location.href = `${location.pathname}${sel.value === 'cleveland' ? '' : `?view=${sel.value}`}#/`; };
 })();
 document.querySelector('.brand .dot').style.background = `linear-gradient(135deg,${TEAMS.map(t => t.color).join(',')})`;
-document.querySelector('meta[name="apple-mobile-web-app-title"]').content = VIEW.short;
-document.querySelectorAll('link[rel="apple-touch-icon"],link[rel="icon"]').forEach(l => l.href = VIEW.icon);
 const API = 'https://site.api.espn.com/apis/site/v2/sports';
 const SPORT = { nba:'basketball', nfl:'football', mlb:'baseball', nhl:'hockey' };
 const H = 3600e3;
@@ -512,7 +513,7 @@ async function loadTeam(t){
 let homeState = { games:[], errors:[] };
 const FILTER_KEY = VIEW_KEY === 'cleveland' ? 'teamFilter' : `teamFilter:${VIEW_KEY}`; // each view remembers its own team filter
 async function showHome(){
-  document.title = VIEW.name;
+  document.title = `${APP_NAME} · ${VIEW.name}`;
   if (!homeState.games.length) $('#app').innerHTML = '<div class="loading">Loading your teams…</div>';
   const res = await Promise.allSettled(TEAMS.map(loadTeam));
   if (currentRoute().name !== 'home') return;
@@ -683,7 +684,7 @@ function renderGame(){
   const g = gameCtx();
   const tabs = tabList(g);
   if (!tabs.some(t => t.key === view.tab)) view.tab = tabs[0].key;
-  document.title = `${g.away?.team?.abbreviation} ${g.away?.score ?? ''} – ${g.home?.team?.abbreviation} ${g.home?.score ?? ''} · ${VIEW.name}`;
+  document.title = `${g.away?.team?.abbreviation} ${g.away?.score ?? ''} – ${g.home?.team?.abbreviation} ${g.home?.score ?? ''} · ${APP_NAME}`;
   const panel = tabs.find(t => t.key === view.tab).render(g);
   $('#app').innerHTML = `<a class="back" href="#/">← All games</a>
     ${hero(g)}
@@ -1959,7 +1960,7 @@ function renderTeam(){
   const t = tview.info, league = tview.league;
   const rec = t.recordSummary || '';
   const color = hexColor(t.color) || 'var(--accent)';
-  document.title = `${t.displayName} · ${VIEW.name}`;
+  document.title = `${t.displayName} · ${APP_NAME}`;
   const body = tview.tab === 'schedule' ? renderTeamSchedule() : tview.tab === 'standings' ? renderStandings()
     : tview.tab === 'news' ? newsBlock({ team:myTeamKey(), limit:200 }) : renderTeamStatsPage();
   $('#app').innerHTML = `<a class="back" href="#/">← All games</a>
@@ -2512,7 +2513,11 @@ function renderStandings(){
 
 /* ---------- News ---------- */
 // Collected every 20 minutes by .github/workflows/news.yml from a fixed list of trusted sources.
-const NEWS_URL = 'https://raw.githubusercontent.com/charliehartel/cleveland-sports/news-data/news.json';
+const NEWS_URL = (() => {
+  const owner = location.hostname.endsWith('.github.io') ? location.hostname.split('.')[0] : 'charliehartel';
+  const repo = location.hostname.endsWith('.github.io') ? (location.pathname.split('/')[1] || 'my-sports') : 'my-sports';
+  return `https://raw.githubusercontent.com/${owner}/${repo}/news-data/news.json`;
+})();
 const newsState = { data:null, loading:false, error:null, missing:false, source:'all', fetchedAt:0 };
 let homeNewsLimit = 8;
 function myTeamKey(){ return VIEW.news && TEAMS.find(t => t.league === tview.league && String(t.id) === String(tview.id))?.key || null; } // News covers only views with a feed

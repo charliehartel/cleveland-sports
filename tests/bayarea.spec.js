@@ -6,7 +6,7 @@ const BAY = ['Warriors', '49ers', 'Giants', 'Sharks', 'Athletics', 'Raiders'];
 test('Bay Area view shows its six teams and its own title', async ({ page }) => {
   await page.goto('/?view=bayarea#/');
   await ready(page, '.quick');
-  await expect(page).toHaveTitle('Bay Area Sports');
+  await expect(page).toHaveTitle('My Sports · Bay Area');
   await expect(page.locator('#view')).toHaveValue('bayarea');
   await expect(page.locator('.qteam .qname')).toHaveText(BAY);
   await expect(page.locator('[data-filter]')).toHaveCount(BAY.length + 1);
@@ -19,14 +19,14 @@ test('Bay Area view shows its six teams and its own title', async ({ page }) => 
   await expect(page).toHaveURL(/\?view=bayarea#\/t\/nhl\/18$/);
   await ready(page, '.team-hero');
   await expect(page.locator('.tab')).toHaveText(['Schedule', 'Team Stats', 'Standings', 'News']);
-  await expect(page).toHaveTitle('San Jose Sharks · Bay Area Sports');
+  await expect(page).toHaveTitle('San Jose Sharks · My Sports');
 });
 
 test('the header title switches views', async ({ page }) => {
   await page.goto('/#/');
   await ready(page, '.qteam');
   await expect(page.locator('#view')).toHaveValue('cleveland');
-  await expect(page.locator('#view option')).toHaveText(['Cleveland Sports', 'Bay Area Sports']);
+  await expect(page.locator('#view option')).toHaveText(['Cleveland', 'Bay Area']);
   await page.selectOption('#view', 'bayarea');
   await expect(page).toHaveURL(/\?view=bayarea#\/$/);
   await ready(page, '.qteam');
@@ -38,7 +38,7 @@ test('the header title switches views', async ({ page }) => {
   await expect(page).toHaveURL(/\/#\/$/);
   await ready(page, '.qteam');
   await expect(page.locator('.qteam .qname')).toHaveText(['Cavaliers', 'Browns', 'Guardians']);
-  await expect(page).toHaveTitle('Cleveland Sports');
+  await expect(page).toHaveTitle('My Sports · Cleveland');
 });
 
 test('each view keeps its own team filter', async ({ page }) => {

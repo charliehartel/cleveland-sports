@@ -8,7 +8,7 @@ const { test: base, expect } = require('@playwright/test');
 // relay checks ESPN's header itself: any ESPN endpoint the app calls that web pages aren't allowed
 // to read is reported as a problem, which fails the test, just as a phone's browser would block it.
 const ESPN_API = /(site|site\.web|sports\.core)\.api\.espn\.com/;
-const UA = 'cleveland-sports-tests/1.0 (+https://github.com/charliehartel/cleveland-sports)';
+const UA = 'my-sports-tests/1.0 (+https://github.com/charliehartel/my-sports)';
 async function relay(page, problems = []) {
   // ESPN's main API plus the two the hockey preview uses (core: rosters and league ranks; site.web: player game logs)
   await page.route(ESPN_API, async route => {

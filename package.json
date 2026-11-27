@@ -1,7 +1,7 @@
 {
-  "name": "cleveland-sports",
+  "name": "my-sports",
   "private": true,
-  "description": "Personal scores app for the Cavaliers, Browns and Guardians",
+  "description": "My Sports: a personal scores app for Cleveland and Bay Area teams",
   "scripts": {
     "test": "playwright test"
   },
