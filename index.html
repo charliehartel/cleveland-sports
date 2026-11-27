@@ -14,20 +14,20 @@
 <style>
 :root{
   --bg:#f6f5f2;--surface:#ffffff;--surface-2:#f0eee9;--border:#e2dfd8;--text:#1b1a18;--muted:#6b675f;--faint:#9a958b;
-  --accent:#e4572e;--live:#d7263d;--good:#1f8a4c;--focus:#2563eb;
+  --accent:#e4572e;--live:#d7263d;--good:#1f8a4c;--warn:#b45309;--focus:#2563eb;
   --cavs:#860038;--browns:#ff3c00;--guardians:#00385d;
   --shadow:0 1px 2px rgba(0,0,0,.05),0 2px 8px rgba(0,0,0,.04);
   --field:#2f7d3a;--field-line:rgba(255,255,255,.55);--zone:#1b1a18;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --bg:#121212;--surface:#1c1c1e;--surface-2:#26262a;--border:#333338;--text:#f1efe9;--muted:#a7a39a;--faint:#77746d;
-  --accent:#ff7a50;--live:#ff4d61;--good:#4cc27e;--focus:#7aa2ff;
+  --accent:#ff7a50;--live:#ff4d61;--good:#4cc27e;--warn:#f5a524;--focus:#7aa2ff;
   --cavs:#c23a6e;--browns:#ff6a33;--guardians:#4d8fc4;
   --shadow:none;--field:#24612d;--zone:#f1efe9;
 }}
 :root[data-theme="dark"]{
   --bg:#121212;--surface:#1c1c1e;--surface-2:#26262a;--border:#333338;--text:#f1efe9;--muted:#a7a39a;--faint:#77746d;
-  --accent:#ff7a50;--live:#ff4d61;--good:#4cc27e;--focus:#7aa2ff;
+  --accent:#ff7a50;--live:#ff4d61;--good:#4cc27e;--warn:#f5a524;--focus:#7aa2ff;
   --cavs:#c23a6e;--browns:#ff6a33;--guardians:#4d8fc4;
   --shadow:none;--field:#24612d;--zone:#f1efe9;
 }
@@ -70,6 +70,13 @@ h2.sec .count{color:var(--faint);font-weight:500}
 .trow.lose{color:var(--muted)}
 .trow.win .nm{font-weight:700}
 .card .foot{font-size:12px;color:var(--faint);margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bay{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;border-radius:999px;padding:3px 10px 3px 8px;margin-top:8px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bay svg{width:14px;height:14px;flex:none}
+.bay.yes{background:color-mix(in srgb,var(--good) 15%,transparent);color:var(--good)}
+.bay.maybe{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)}
+.bay.no,.bay.none{background:var(--surface-2);color:var(--muted)}
+.baynote{font-size:12px;color:var(--muted);margin-top:6px}
+.baynote a{color:inherit}
 .empty{color:var(--faint);font-size:14px;padding:14px;border:1px dashed var(--border);border-radius:12px}
 .err{background:color-mix(in srgb,var(--live) 10%,var(--surface));border:1px solid color-mix(in srgb,var(--live) 40%,var(--border));color:var(--text);border-radius:10px;padding:10px 12px;font-size:13px;margin-top:12px}
 .loading{color:var(--faint);padding:40px 0;text-align:center}
@@ -240,11 +247,96 @@ function norm(e, t){
   const c = e.competitions?.[0] || {};
   const st = (c.status || e.status || {}).type || {};
   const comps = c.competitors || [];
-  return {
-    id:e.id, team:t, date:new Date(e.date), state:st.state || 'pre', completed:!!st.completed,
+  const g = {
+    id:e.id, team:t, league:t.league, date:new Date(e.date), state:st.state || 'pre', completed:!!st.completed,
     detail:st.shortDetail || st.detail || '', home:side(comps.find(x => x.homeAway==='home')),
     away:side(comps.find(x => x.homeAway==='away')), broadcast:bcOf(c), venue:c.venue?.fullName || '',
   };
+  g.bay = bayArea(g.league, g.date, bcList(c), g.home, g.away);
+  return g;
+}
+
+/* ---------- Bay Area TV ---------- */
+// Broadcasts with their market ("national" / "home" / "away"), from schedule, scoreboard or summary shapes.
+function bcList(c){
+  const out = [];
+  for (const b of c.broadcasts || []) {
+    const market = String((typeof b.market === 'string' ? b.market : b.market?.type) || '').toLowerCase();
+    const names = b.media?.shortName ? [b.media.shortName] : (Array.isArray(b.names) ? b.names : []);
+    for (const n of names) if (n) out.push({ name:String(n).trim(), market });
+  }
+  return out;
+}
+const BAY = {
+  ota: { ABC:'KGO 7', CBS:'KPIX 5', NBC:'KNTV 11', FOX:'KTVU 2' },
+  // Bay Area teams: when one is the opponent, its own broadcast airs here.
+  teams: { nba:{ GS:'NBC Sports Bay Area' }, mlb:{ SF:'NBC Sports Bay Area', ATH:'NBC Sports California', OAK:'NBC Sports California' }, nfl:{ SF:'' } },
+  cable: /^(ESPN|ESPN2|ESPNU|ESPNEWS|ABC\/ESPN|TNT|TBS|truTV|FS1|FS2|NFL Net(work)?|NFLN|NBA TV|MLB Net(work)?|MLBN|NBCSN|USA Net(work)?)$/i,
+  stream: /prime|peacock|netflix|apple tv|espn\+|espn unl|youtube|^max$|paramount|nbc sports app|amazon/i,
+  packages: /mlb\.tv|league pass|sunday ticket|nfl\+/i,      // out-of-market packages, not Bay Area TV
+  outOfMarket: { nba:'NBA League Pass', mlb:'MLB.TV', nfl:'NFL Sunday Ticket' },
+};
+function etParts(d){
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone:'America/New_York', weekday:'short', hour:'numeric', hourCycle:'h23', year:'numeric', month:'2-digit', day:'2-digit' }).formatToParts(d);
+  return Object.fromEntries(parts.map(p => [p.type, p.value]));
+}
+function bayArea(league, date, bcs, home, away){
+  const teams = BAY.teams[league] || {};
+  const baySide = home && home.abbr in teams ? 'home' : away && away.abbr in teams ? 'away' : null;
+  const bayTeam = baySide === 'home' ? home : baySide === 'away' ? away : null;
+  const opts = [];
+  for (const b of bcs) {
+    if (BAY.packages.test(b.name)) continue;
+    const key = b.name.toUpperCase();
+    if (b.market === 'national') {
+      if (BAY.ota[key]) {
+        const et = etParts(date);
+        const regional = (league === 'nfl' && (key === 'CBS' || key === 'FOX') && et.weekday === 'Sun' && Number(et.hour) < 19)
+                      || (league === 'mlb' && key === 'FOX');
+        if (regional && !baySide) opts.push({ lvl:1, label:`Maybe · ${key} regional`, net:key, regional:true,
+          why:`${key}'s Sunday-afternoon games are regional. ${BAY.ota[key]} airs it only if the Bay Area is in this game's coverage map.` });
+        else opts.push({ lvl:2, label:`${BAY.ota[key]} · ${key}`, why:'Free over-the-air TV in the Bay Area.' });
+      } else if (BAY.stream.test(b.name)) opts.push({ lvl:2, label:b.name, why:'Streams nationally, including the Bay Area.' });
+      else if (BAY.cable.test(b.name)) opts.push({ lvl:2, label:b.name, why:'National cable channel, available in the Bay Area.' });
+      else opts.push({ lvl:1, label:`Maybe · ${b.name}`, why:`Listed nationally on ${b.name}, which I don't recognize as a Bay Area channel.` });
+    } else if (baySide && b.market === baySide) {
+      opts.push({ lvl:2, label:b.name, why:`The ${bayTeam.short} broadcast airs in the Bay Area.` });
+    }
+  }
+  if (baySide && !opts.some(o => o.lvl === 2)) {
+    const ch = teams[bayTeam.abbr] || (league === 'nfl' ? 'Local TV' : '');
+    if (ch) opts.push({ lvl:2, label:ch, why:`The ${bayTeam.short} broadcast airs in the Bay Area.` });
+  }
+  if (opts.length) return opts.sort((a, b) => b.lvl - a.lvl)[0];
+  if (!bcs.some(b => !BAY.packages.test(b.name))) return null; // TV not announced yet
+  return { lvl:0, label:'Not on Bay Area TV', sub:BAY.outOfMarket[league],
+    why:`Only on Cleveland-area channels. Out of market, you can stream it on ${BAY.outOfMarket[league]}.` };
+}
+// For a regional NFL game: if the 49ers are on the same network at the same time, Bay Area TV shows the 49ers.
+const sfCache = {};
+async function refineBay(games){
+  const jobs = games.filter(g => g.bay?.regional && g.league === 'nfl').map(async g => {
+    const et = etParts(g.date), ymd = `${et.year}${et.month}${et.day}`;
+    try {
+      sfCache[ymd] ||= getJSON(`${API}/football/nfl/scoreboard?dates=${ymd}`);
+      const sb = await sfCache[ymd];
+      const sf = (sb.events || []).find(e => (e.competitions?.[0]?.competitors || []).some(x => x.team?.abbreviation === 'SF'));
+      if (!sf || sf.id === g.id) return;
+      const sameTime = new Date(sf.date).getTime() === g.date.getTime();
+      const sameNet = bcList(sf.competitions[0]).some(b => b.name.toUpperCase() === g.bay.net);
+      if (sameTime && sameNet) g.bay = { lvl:0, label:'Not on Bay Area TV', sub:`${BAY.ota[g.bay.net]} has the 49ers`,
+        why:`${BAY.ota[g.bay.net]} is showing the 49ers in the same time slot. Stream it on NFL Sunday Ticket.` };
+    } catch { delete sfCache[ymd]; }
+  });
+  await Promise.all(jobs);
+}
+const TV_ICON = `<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="3.5" width="13" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5.5 14.5h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
+const TV_OFF = `<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="3.5" width="13" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M2 2l12 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
+function bayPill(bay){
+  if (!bay) return `<span class="bay none">${TV_ICON}Bay Area TV: not announced</span>`;
+  const cls = ['no', 'maybe', 'yes'][bay.lvl];
+  const text = bay.lvl === 2 ? `Bay Area TV: ${bay.label}` : bay.lvl === 1 ? `Bay Area TV: ${bay.label}` : `${bay.label}${bay.sub ? ' · ' + bay.sub : ''}`;
+  return `<span class="bay ${cls}" title="${esc(bay.why || '')}">${bay.lvl ? TV_ICON : TV_OFF}${esc(text)}</span>`;
 }
 
 /* ---------- Home ---------- */
@@ -279,6 +371,9 @@ async function showHome(){
   const res = await Promise.allSettled(TEAMS.map(loadTeam));
   if (currentRoute().name !== 'home') return;
   homeState = { games:res.flatMap(r => r.status==='fulfilled' ? r.value : []), errors:res.flatMap(r => r.status==='rejected' ? [r.reason.message] : []) };
+  const soon = Date.now() + 8*24*H;
+  await refineBay(homeState.games.filter(g => g.date.getTime() < soon && g.date.getTime() > Date.now() - 2*24*H));
+  if (currentRoute().name !== 'home') return;
   renderHome();
   setUpdated();
   const now = Date.now();
@@ -309,7 +404,8 @@ function card(g){
   return `<a class="card" style="--tc:${g.team.color}" href="#/g/${g.team.league}/${esc(g.id)}">
     <div class="meta"><span class="lg">${g.team.league.toUpperCase()}</span>${status}</div>
     ${teamRow(g.away, g)}${teamRow(g.home, g)}
-    ${foot ? `<div class="foot">${esc(foot)}</div>` : ''}</a>`;
+    ${foot ? `<div class="foot">${esc(foot)}</div>` : ''}
+    ${bayPill(g.bay)}</a>`;
 }
 function section(title, list, emptyMsg){
   return `<h2 class="sec">${esc(title)} <span class="count">${list.length || ''}</span></h2>` +
@@ -352,7 +448,12 @@ async function showGame(league, id){
     }
     const r = currentRoute();
     if (r.name !== 'game' || r.id !== id) return;
-    view.s = s; view.sit = sit;
+    const hc = s.header?.competitions?.[0] || {};
+    const hs = c => c ? { abbr:c.team?.abbreviation, short:c.team?.shortDisplayName || c.team?.name } : null;
+    const bay = { league, date:new Date(hc.date || 0), id,
+      bay:bayArea(league, new Date(hc.date || 0), bcList(hc), hs((hc.competitors || []).find(x => x.homeAway === 'home')), hs((hc.competitors || []).find(x => x.homeAway === 'away'))) };
+    if (state !== 'post') await refineBay([bay]);
+    view.s = s; view.sit = sit; view.bay = bay.bay;
     if (!view.tab) view.tab = state === 'in' ? 'gamecast' : state === 'post' ? 'box' : 'preview';
     renderGame();
     setUpdated(state === 'in' ? ' · live' : '');
@@ -421,7 +522,8 @@ function hero(g){
   const bc = bcOf(comp);
   return `<div class="score-hero"><div class="hero-grid">${t(away)}<div class="hmid">${mid}</div>${t(home)}</div>
     ${linescore(g)}
-    <div class="hero-foot">${esc([venue, bc].filter(Boolean).join(' · '))}</div></div>`;
+    <div class="hero-foot">${esc([venue, bc].filter(Boolean).join(' · '))}<br>${bayPill(view.bay)}
+      ${view.bay?.why ? `<div class="baynote">${esc(view.bay.why)}${view.bay.regional ? ` <a href="https://506sports.com/nfl.php" target="_blank" rel="noopener">See this week's coverage maps</a>` : ''}</div>` : ''}</div></div>`;
 }
 
 function linescore(g){
