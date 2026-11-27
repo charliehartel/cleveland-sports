@@ -114,6 +114,20 @@ test('NHL empty net: a team on the ice without a goalie', async ({ page }) => {
   expect(r).toEqual(['VGK']);
 });
 
+test('NHL three stars render from ESPN featured athletes', async ({ page }) => {
+  const r = await page.evaluate(() => {
+    const ath = (id, name) => ({ id, displayName: name });
+    const g = { league: 'nhl', state: 'post', s: { boxscore: { players: [] } }, byId: () => null,
+      comp: { status: { featuredAthletes: [{ name: 'firstStar', athlete: ath('1', 'A One'), team: { id: '18' } }, { name: 'secondStar', athlete: ath('2', 'B Two'), team: { id: '37' } },
+        { name: 'thirdStar', athlete: ath('3', 'C Three'), team: { id: '18' } }, { name: 'winningGoalie', athlete: ath('4', 'D Four') }] } } };
+    const el = document.createElement('div'); el.innerHTML = nhlThreeStars(g);
+    return { names: [...el.querySelectorAll('.nm')].map(e => e.textContent), note: el.querySelector('.note')?.textContent, map: Object.values(nhlStarMap(g)).map(x => x.n) };
+  });
+  expect(r.names).toEqual(['A One', 'B Two', 'C Three']);
+  expect(r.note).toBe('Win: D Four');
+  expect(r.map).toEqual([1, 2, 3]);
+});
+
 // Guard check: an ESPN endpoint that doesn't allow web pages (the team-info endpoint that once
 // broke team pages) must be reported in these tests, the same way a phone's browser blocks it.
 const { test: plain, expect: plainExpect } = require('@playwright/test');
