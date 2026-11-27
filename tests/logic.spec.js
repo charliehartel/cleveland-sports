@@ -104,6 +104,16 @@ test('NHL penalties: power play, matching penalties and a power-play goal', asyn
   expect(r.d).toBe('SJ');
 });
 
+test('NHL empty net: a team on the ice without a goalie', async ({ page }) => {
+  const r = await page.evaluate(() => {
+    const g = { league: 'nhl', state: 'in', away: { team: { id: '18', abbreviation: 'SJ' } }, home: { team: { id: '37', abbreviation: 'VGK' } }, s: {
+      boxscore: { players: [{ team: { id: '18' }, statistics: [{ name: 'goalies', athletes: [{ athlete: { id: 'g1' } }] }] }, { team: { id: '37' }, statistics: [{ name: 'goalies', athletes: [{ athlete: { id: 'g2' } }] }] }] },
+      onIce: [{ teamId: '18', entries: ['a', 'b', 'c', 'd', 'e', 'g1'].map(athleteid => ({ athleteid })) }, { teamId: '37', entries: ['f', 'h', 'i', 'j', 'k', 'l'].map(athleteid => ({ athleteid })) }] } };
+    return nhlEmptyNets(g).map(t => t.abbr);
+  });
+  expect(r).toEqual(['VGK']);
+});
+
 // Guard check: an ESPN endpoint that doesn't allow web pages (the team-info endpoint that once
 // broke team pages) must be reported in these tests, the same way a phone's browser blocks it.
 const { test: plain, expect: plainExpect } = require('@playwright/test');
