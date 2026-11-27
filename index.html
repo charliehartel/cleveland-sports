@@ -284,7 +284,7 @@ const TEAMS = [
   { key:'guardians', label:'Guardians', league:'mlb', sport:'baseball',   abbr:'cle', id:'5', color:'var(--guardians)' },
 ];
 const API = 'https://site.api.espn.com/apis/site/v2/sports';
-const SPORT = { nba:'basketball', nfl:'football', mlb:'baseball' };
+const SPORT = { nba:'basketball', nfl:'football', mlb:'baseball', nhl:'hockey' };
 const H = 3600e3;
 
 /* ---------- Helpers ---------- */
@@ -362,12 +362,14 @@ function bcList(c){
 const BAY = {
   ota: { ABC:'KGO 7', CBS:'KPIX 5', NBC:'KNTV 11', FOX:'KTVU 2' },
   // Bay Area teams: when one is the opponent, its own broadcast airs here.
-  teams: { nba:{ GS:'NBC Sports Bay Area' }, mlb:{ SF:'NBC Sports Bay Area', ATH:'NBC Sports California', OAK:'NBC Sports California' }, nfl:{ SF:'' } },
-  cable: /^(ESPN|ESPN2|ESPNU|ESPNEWS|ABC\/ESPN|TNT|TBS|truTV|FS1|FS2|NFL Net(work)?|NFLN|NBA TV|MLB Net(work)?|MLBN|NBCSN|USA Net(work)?)$/i,
+  teams: { nba:{ GS:'NBC Sports Bay Area' }, mlb:{ SF:'NBC Sports Bay Area', ATH:'NBC Sports California', OAK:'NBC Sports California' }, nfl:{ SF:'' }, nhl:{ SJ:'NBC Sports Bay Area' } },
+  cable: /^(ESPN|ESPN2|ESPNU|ESPNEWS|ABC\/ESPN|TNT|TBS|truTV|FS1|FS2|NFL Net(work)?|NFLN|NBA TV|MLB Net(work)?|MLBN|NHL Net(work)?|NHLN|NBCSN|USA Net(work)?)$/i,
   stream: /prime|peacock|netflix|apple tv|espn\+|espn unl|youtube|^max$|paramount|nbc sports app|amazon/i,
   packages: /mlb\.tv|league pass|sunday ticket|nfl\+/i,      // out-of-market packages, not Bay Area TV
-  outOfMarket: { nba:'NBA League Pass', mlb:'MLB.TV', nfl:'NFL Sunday Ticket' },
+  outOfMarket: { nba:'NBA League Pass', mlb:'MLB.TV', nfl:'NFL Sunday Ticket', nhl:'ESPN+' },
 };
+// NHL games listed nationally on ESPN+ are its out-of-market package (blacked out in the home teams' markets), not national TV.
+const isPackage = (league, name) => BAY.packages.test(name) || (league === 'nhl' && /^espn\s?\+$/i.test(name));
 function etParts(d){
   const parts = new Intl.DateTimeFormat('en-US', { timeZone:'America/New_York', weekday:'short', hour:'numeric', hourCycle:'h23', year:'numeric', month:'2-digit', day:'2-digit' }).formatToParts(d);
   return Object.fromEntries(parts.map(p => [p.type, p.value]));
@@ -378,7 +380,7 @@ function bayArea(league, date, bcs, home, away){
   const bayTeam = baySide === 'home' ? home : baySide === 'away' ? away : null;
   const opts = [];
   for (const b of bcs) {
-    if (BAY.packages.test(b.name)) continue;
+    if (isPackage(league, b.name)) continue;
     const key = b.name.toUpperCase();
     if (b.market === 'national') {
       if (BAY.ota[key]) {
@@ -400,9 +402,9 @@ function bayArea(league, date, bcs, home, away){
     if (ch) opts.push({ lvl:2, label:ch, why:`The ${bayTeam.short} broadcast airs in the Bay Area.` });
   }
   if (opts.length) return opts.sort((a, b) => b.lvl - a.lvl)[0];
-  if (!bcs.some(b => !BAY.packages.test(b.name))) return null; // TV not announced yet
+  if (!bcs.some(b => !isPackage(league, b.name))) return null; // TV not announced yet
   return { lvl:0, label:'Not on Bay Area TV', sub:BAY.outOfMarket[league],
-    why:`Only on Cleveland-area channels. Out of market, you can stream it on ${BAY.outOfMarket[league]}.` };
+    why:`Only on ${teamOf(league) ? 'Cleveland-area' : 'the teams\' local'} channels. Out of market, you can stream it on ${BAY.outOfMarket[league]}.` };
 }
 // For a regional NFL game: if the 49ers are on the same network at the same time, Bay Area TV shows the 49ers.
 const sfCache = {};
@@ -569,7 +571,7 @@ async function showGame(league, id){
     const s = await getJSON(`${API}/${sport}/${league}/summary?event=${encodeURIComponent(id)}`);
     const state = s.header?.competitions?.[0]?.status?.type?.state || 'pre';
     let sit = null;
-    if (state === 'in' && league !== 'nba') {
+    if (state === 'in' && (league === 'nfl' || league === 'mlb')) {
       try {
         const sb = await leagueScoreboard(teamOf(league));
         const ev = (sb.events || []).find(e => e.id === id);
@@ -676,8 +678,9 @@ function linescore(g){
   if (state === 'pre' || !home || !away) return '';
   const n = Math.max(home.linescores?.length || 0, away.linescores?.length || 0);
   if (!n) return '';
-  const regs = league === 'mlb' ? 9 : 4;
-  const cols = Array.from({ length:Math.max(n, league === 'mlb' ? regs : n) }, (_, i) => i < regs ? String(i+1) : (league === 'mlb' ? String(i+1) : (i === regs ? 'OT' : `${i-regs+1}OT`)));
+  const regs = league === 'mlb' ? 9 : league === 'nhl' ? 3 : 4;
+  const cols = Array.from({ length:Math.max(n, league === 'mlb' ? regs : n) }, (_, i) => league === 'nhl' && i >= regs ? nhlPerLabel(i + 1)
+    : i < regs ? String(i+1) : (league === 'mlb' ? String(i+1) : (i === regs ? 'OT' : `${i-regs+1}OT`)));
   const mlbExtra = league === 'mlb';
   const teamHits = c => {
     const t = (view.s.boxscore?.teams || []).find(x => String(x.team?.id) === String(c.team?.id));
@@ -733,15 +736,36 @@ function nbaDerived(gp){
     }
   };
 }
+// NHL box score: ESPN sends ~20 columns per skater; show the usual hockey line. Keys are ESPN's stat keys.
+const NHL_BOX = {
+  skater:[['goals','G'], ['assists','A'], ['=pts','PTS'], ['plusMinus','+/-'], ['shotsTotal','S'], ['hits','HIT'], ['blockedShots','BLK'], ['penaltyMinutes','PIM'], ['faceoffPercent','FO%'], ['timeOnIce','TOI']],
+  goalies:[['goalsAgainst','GA'], ['shotsAgainst','SA'], ['saves','SV'], ['savePct','SV%'], ['timeOnIce','TOI'], ['penaltyMinutes','PIM']],
+};
+const NHL_GROUP = { forwards:'Forwards', defenses:'Defense', goalies:'Goalies', skaters:'Skaters' };
+function nhlBox(gp){
+  const keys = gp.keys || [], L = gp.labels || [];
+  const spec = NHL_BOX[gp.name === 'goalies' ? 'goalies' : 'skater'];
+  const cols = spec.map(([k, label]) => {
+    if (k === '=pts') { const ig = keys.indexOf('goals'), ia = keys.indexOf('assists'); return ig < 0 || ia < 0 ? null : { label, get:st => String(Number(st[ig]) + Number(st[ia])) }; }
+    const i = keys.indexOf(k);
+    return i < 0 ? null : { label, get:st => st[i] };
+  }).filter(Boolean);
+  // drop faceoff % for defensemen: almost always 0
+  const useCols = gp.name === 'defenses' ? cols.filter(c => c.label !== 'FO%') : cols;
+  if (!useCols.length) return null;
+  return { labels:useCols.map(c => c.label), pick:st => useCols.map(c => c.get(st) ?? ''), descs:useCols.map(c => (gp.descriptions || [])[L.indexOf(c.label)] || '') };
+}
 function renderBox(g){
   const players = orderedPlayers(g);
   if (!players.length) return `<div class="empty">Box score isn't available yet.</div>`;
   const teams = players.map(p => {
     const groups = (p.statistics || []).filter(gp => (gp.athletes || []).length).map(gp => {
       const der = g.league === 'nba' ? nbaDerived(gp) : null;
-      const labels = [...(gp.labels || []), ...(der ? der.labels : [])];
-      const desc = gp.descriptions || [];
-      const head = `<tr><th>${esc(grpTitle(gp) || 'Player')}</th>${labels.map((l, i) => `<th title="${esc(desc[i] || '')}">${esc(l)}</th>`).join('')}</tr>`;
+      const nhl = g.league === 'nhl' ? nhlBox(gp) : null;
+      const labels = nhl ? nhl.labels : [...(gp.labels || []), ...(der ? der.labels : [])];
+      const desc = nhl ? nhl.descs : gp.descriptions || [];
+      const title = (g.league === 'nhl' && NHL_GROUP[gp.name]) || grpTitle(gp);
+      const head = `<tr><th>${esc(title || 'Player')}</th>${labels.map((l, i) => `<th title="${esc(desc[i] || '')}">${esc(l)}</th>`).join('')}</tr>`;
       let ath = gp.athletes;
       const rows = [];
       const rowFor = a => {
@@ -749,18 +773,19 @@ function renderBox(g){
         const name = `${esc(a.athlete?.shortName || a.athlete?.displayName)}${pos ? `<span class="pos">${esc(pos)}</span>` : ''}`;
         if (!a.stats?.length) return `<tr><td class="pl">${name}</td><td colspan="${labels.length}" style="text-align:left"><span class="dnp">${esc(a.reason || 'Did not play')}</span></td></tr>`;
         const extra = der ? der.calc(a.stats) : [];
-        return `<tr><td class="pl">${name}</td>${[...a.stats, ...extra].map(v => `<td>${esc(v)}</td>`).join('')}</tr>`;
+        const vals = nhl ? nhl.pick(a.stats) : [...a.stats, ...extra];
+        return `<tr><td class="pl">${name}</td>${vals.map(v => `<td>${esc(v)}</td>`).join('')}</tr>`;
       };
       if (g.league === 'nba') {
         const st = ath.filter(a => a.starter), bn = ath.filter(a => !a.starter);
         rows.push(`<tr class="divider"><td colspan="${labels.length + 1}">Starters</td></tr>`, ...st.map(rowFor));
         if (bn.length) rows.push(`<tr class="divider"><td colspan="${labels.length + 1}">Bench</td></tr>`, ...bn.map(rowFor));
       } else rows.push(...ath.map(rowFor));
-      if (gp.totals?.length) {
+      if (gp.totals?.length && !nhl) {
         const extra = der ? der.calc(gp.totals) : [];
         rows.push(`<tr class="total"><td>Team</td>${[...gp.totals, ...extra].map(v => `<td>${esc(v)}</td>`).join('')}</tr>`);
       }
-      return `${g.league !== 'nba' ? `<div class="grp-title">${esc(grpTitle(gp))}</div>` : ''}<div class="tablewrap"><table><thead>${head}</thead><tbody>${rows.join('')}</tbody></table></div>`;
+      return `${g.league !== 'nba' ? `<div class="grp-title">${esc(title)}</div>` : ''}<div class="tablewrap"><table><thead>${head}</thead><tbody>${rows.join('')}</tbody></table></div>`;
     }).join('');
     return `<div class="box"><div class="teamhead">${teamLink(g.league, p.team, img(logoOf(p.team), 'logo', p.team?.abbreviation) + esc(p.team?.displayName))}</div>${groups}</div>`;
   });
@@ -805,7 +830,7 @@ function renderTeamStats(g){
     }).join('');
     out += `<div class="two">${groups}</div>`;
   } else {
-    const lowerBetter = /turnover|foul|penalt|sack|interception|fumble/i;
+    const lowerBetter = /turnover|foul|penalt|sack|interception|fumble|giveaway/i;
     const rows = a.statistics.map(st => {
       const hv = (h.statistics || []).find(x => x.name === st.name)?.displayValue ?? '';
       const pctLike = /pct|percent|%/i.test(st.name + st.label);
@@ -894,12 +919,14 @@ function scoringSummary(g){
   let list = [];
   if (g.league === 'nfl') list = g.s.scoringPlays || [];
   else if (g.league === 'mlb') list = (g.s.plays || []).filter(p => p.scoringPlay && p.type?.type === 'play-result' || (p.scoringPlay && p.summaryType !== 'P'));
+  else if (g.league === 'nhl') list = (g.s.plays || []).filter(p => p.scoringPlay);
   else return '';
   if (!list.length) return '';
-  const per = p => g.league === 'mlb' ? `${p.period?.type === 'Bottom' ? 'Bot' : 'Top'} ${ordinal(p.period?.number || 0)}` : `Q${p.period?.number}${p.clock?.displayValue ? ' ' + p.clock.displayValue : ''}`;
+  const per = p => g.league === 'mlb' ? `${p.period?.type === 'Bottom' ? 'Bot' : 'Top'} ${ordinal(p.period?.number || 0)}`
+    : g.league === 'nhl' ? nhlClk(g, p) : `Q${p.period?.number}${p.clock?.displayValue ? ' ' + p.clock.displayValue : ''}`;
   const seen = new Set();
   const items = list.filter(p => { const k = p.id; if (seen.has(k)) return false; seen.add(k); return true; }).map(p =>
-    `<li class="scoring"><span class="clk">${esc(per(p))}</span>${img(teamLogoById(g, p.team?.id), '', '')}<span class="txt">${esc(p.text)}</span><span class="scr">${esc(p.awayScore)}–${esc(p.homeScore)}</span></li>`).join('');
+    `<li class="scoring"><span class="clk">${esc(per(p))}</span>${img(teamLogoById(g, p.team?.id), '', '')}<span class="txt">${esc(p.text)}${nhlStrength(g, p)}</span><span class="scr">${playScore(g, p)}</span></li>`).join('');
   return `<div class="box"><h3>Scoring summary <span class="sub">${esc(g.away?.team?.abbreviation)}–${esc(g.home?.team?.abbreviation)}</span></h3><ul class="plays">${items}</ul></div>`;
 }
 
@@ -911,13 +938,31 @@ function renderSummary(g){
 function playRow(g, p, clk){
   const dd = p.start?.downDistanceText && !/kickoff|timeout|end of|extra point/i.test(p.type?.text || '') ? `<span class="dd">${esc(p.start.downDistanceText)}</span>` : '';
   const isNew = view.fresh?.has(String(p.id));
-  return `<li class="${p.scoringPlay ? 'scoring' : ''}${isNew ? ' new' : ''}"><span class="clk">${esc(clk)}</span>${img(teamLogoById(g, p.team?.id), '', '')}<span class="txt">${dd}${esc(p.text)}</span><span class="scr">${esc(p.awayScore ?? '')}–${esc(p.homeScore ?? '')}</span></li>`;
+  return `<li class="${p.scoringPlay ? 'scoring' : ''}${isNew ? ' new' : ''}"><span class="clk">${esc(clk)}</span>${img(teamLogoById(g, p.team?.id), '', '')}<span class="txt">${dd}${esc(p.text)}</span><span class="scr">${playScore(g, p)}</span></li>`;
 }
 function periodChips(periods, label){
   return `<div class="pchips"><button class="chip" data-period="all" aria-pressed="${view.period==='all'}">All</button>${periods.map(n =>
     `<button class="chip" data-period="${n}" aria-pressed="${String(view.period)===String(n)}">${esc(label(n))}</button>`).join('')}</div>`;
 }
 const nbaPer = n => n <= 4 ? `Q${n}` : (n === 5 ? 'OT' : `${n-4}OT`);
+/* NHL periods: 1–3, then OT; in the regular season period 5 is the shootout, in the playoffs it's 2OT and so on.
+   ESPN's NHL clock is time elapsed in the period. */
+const nhlPlayoffs = () => view.s?.header?.season?.type === 3;
+const nhlPerLabel = n => n <= 3 ? String(n) : n === 4 ? 'OT' : nhlPlayoffs() ? `${n-3}OT` : 'SO';
+const nhlPerName = n => n <= 3 ? ordinal(n) : nhlPerLabel(n);
+const isShootout = p => !nhlPlayoffs() && p.period?.number >= 5;
+const nhlClk = (g, p) => isShootout(p) ? 'SO' : `${nhlPerName(p.period?.number || 0)} ${p.clock?.displayValue || ''}`.trim();
+function nhlStrength(g, p){
+  const t = p.strength?.abbreviation;
+  if (g.league !== 'nhl' || !p.scoringPlay || !t || t === 'even-strength') return '';
+  return ` <span class="dd">${esc(p.strength.text)}</span>`;
+}
+// During a shootout ESPN's play scores count shootout goals, not the game score: leave them out.
+function playScore(g, p){
+  if (g.league === 'nhl' && isShootout(p)) return '';
+  return `${esc(p.awayScore ?? '')}–${esc(p.homeScore ?? '')}`;
+}
+const NHL_SKIP = /^(Stoppage|Period Start|Shootout Start)$/;
 function renderPlays(g){
   const live = g.state === 'in';
   if (g.league === 'nfl') {
@@ -946,6 +991,14 @@ function renderPlays(g){
     if (live) list = [...list].reverse();
     if (view.period === 'all' && list.length > 400) list = live ? list.slice(0, 400) : list;
     return `<div class="box">${periodChips(periods, nbaPer)}<ul class="plays">${list.map(p => playRow(g, p, `${nbaPer(p.period?.number)} ${p.clock?.displayValue || ''}`)).join('')}</ul></div>`;
+  }
+  if (g.league === 'nhl') {
+    const all = (g.s.plays || []).filter(p => !NHL_SKIP.test(p.type?.text || ''));
+    if (!all.length) return `<div class="empty">No plays yet.</div>`;
+    const periods = [...new Set(all.map(p => p.period?.number))].filter(Boolean);
+    let list = view.period === 'all' ? all : all.filter(p => String(p.period?.number) === String(view.period));
+    if (live) list = [...list].reverse();
+    return `<div class="box">${periodChips(periods, nhlPerName)}<ul class="plays">${list.map(p => playRow(g, p, nhlClk(g, p))).join('')}</ul></div>`;
   }
   // MLB: grouped by half-inning, each at-bat expandable to its pitches
   const all = g.s.plays || [];
@@ -980,6 +1033,7 @@ function renderGamecast(g){
   if (g.league === 'nfl') parts.push(nflField(g));
   if (g.league === 'mlb') parts.push(mlbDiamond(g));
   if (g.league === 'nba') parts.push(nbaLive(g), nbaShots(g));
+  if (g.league === 'nhl') parts.push(nhlLive(g), nhlShots(g));
   parts.push(winProb(g), recentPlays(g), quickCompare(g), scoringSummary(g), leaders(g));
   return parts.filter(Boolean).join('');
 }
@@ -989,24 +1043,27 @@ function lastPlays(g, n){
     const plays = [...(d.previous || []), ...(d.current && !(d.previous || []).some(x => x.id === d.current.id) ? [d.current] : [])].flatMap(dr => dr.plays || []);
     return plays.slice(-n).reverse();
   }
-  const ps = (g.s.plays || []).filter(p => g.league !== 'mlb' || (p.summaryType !== 'P' && p.text && !/batterpitcher|inning/.test(p.type?.type || '')));
+  const ps = (g.s.plays || []).filter(p => g.league === 'nhl' ? !NHL_SKIP.test(p.type?.text || '') && p.text
+    : g.league !== 'mlb' || (p.summaryType !== 'P' && p.text && !/batterpitcher|inning/.test(p.type?.type || '')));
   return ps.slice(-n).reverse();
 }
 function recentPlays(g){
   const ps = lastPlays(g, 8);
   if (!ps.length) return '';
-  const clk = p => g.league === 'mlb' ? `${p.period?.type === 'Bottom' ? 'B' : 'T'}${p.period?.number}` : g.league === 'nba' ? `${nbaPer(p.period?.number)} ${p.clock?.displayValue || ''}` : `Q${p.period?.number} ${p.clock?.displayValue || ''}`;
+  const clk = p => g.league === 'mlb' ? `${p.period?.type === 'Bottom' ? 'B' : 'T'}${p.period?.number}` : g.league === 'nba' ? `${nbaPer(p.period?.number)} ${p.clock?.displayValue || ''}`
+    : g.league === 'nhl' ? nhlClk(g, p) : `Q${p.period?.number} ${p.clock?.displayValue || ''}`;
   return `<div class="box"><h3>Latest plays <span class="sub">new plays appear automatically</span></h3><ul class="plays">${ps.map(p => playRow(g, p, clk(p))).join('')}</ul></div>`;
 }
 function quickCompare(g){
   const [a, h] = orderedTeams(g);
   if (!a || !h) return '';
   const want = { nba:['fieldGoalPct', 'threePointFieldGoalPct', 'totalRebounds', 'assists', 'totalTurnovers', 'pointsInPaint', 'fastBreakPoints'],
-                 nfl:['totalYards', 'netPassingYards', 'rushingYards', 'thirdDownEff', 'turnovers', 'possessionTime', 'totalPenaltiesYards'] }[g.league];
+                 nfl:['totalYards', 'netPassingYards', 'rushingYards', 'thirdDownEff', 'turnovers', 'possessionTime', 'totalPenaltiesYards'],
+                 nhl:['shotsTotal', 'powerPlayGoals', 'powerPlayOpportunities', 'faceoffPercent', 'hits', 'blockedShots', 'takeaways', 'giveaways', 'penaltyMinutes'] }[g.league];
   if (!want) return '';
   const rows = want.map(n => {
     const sa = (a.statistics || []).find(s => s.name === n), sh = (h.statistics || []).find(s => s.name === n);
-    return sa ? cmpRow(sa.label, sa.displayValue, sh?.displayValue ?? '', { lowerBetter:/turnover|penalt/i.test(n), noBar:n === 'possessionTime' }) : '';
+    return sa ? cmpRow(sa.label, sa.displayValue, sh?.displayValue ?? '', { lowerBetter:/turnover|penalt|giveaway/i.test(n), noBar:n === 'possessionTime' }) : '';
   }).join('');
   return rows ? `<div class="box"><h3>Key stats</h3>${cmpHead(g)}<div class="cmp" style="--ac:${g.ac};--hc:${g.hc}">${rows}</div></div>` : '';
 }
@@ -1134,6 +1191,49 @@ function nbaShots(g){
     <svg viewBox="0 0 ${50*S} ${48*S}" width="100%" style="max-width:520px;display:block;margin:0 auto" role="img" aria-label="Shot chart">${court}${dots}</svg></div>`;
 }
 
+/* NHL live + shot chart */
+function nhlLive(g){
+  const plays = (g.s.plays || []).filter(p => !NHL_SKIP.test(p.type?.text || '') && p.text);
+  const last = plays[plays.length - 1];
+  if (!last) return '';
+  const sog = c => (orderedTeams(g).find(t => String(t?.team?.id) === String(c?.team?.id))?.statistics || []).find(s => s.name === 'shotsTotal')?.displayValue;
+  const sa = sog(g.away), sh = sog(g.home);
+  return `<div class="box"><div class="lastplay"><span class="lbl">Last play · ${esc(nhlClk(g, last))}</span>${esc(last.text)}</div>
+    ${sa != null && sh != null ? `<div class="small" style="margin-top:8px">Shots on goal: <b>${esc(g.away?.team?.abbreviation)} ${esc(sa)}</b> · <b>${esc(g.home?.team?.abbreviation)} ${esc(sh)}</b></div>` : ''}</div>`;
+}
+// ESPN rink coordinates are feet from center ice (x −100…100, goal lines at ±89; y −42.5…42.5).
+// Every attempt is flipped onto one half so both teams shoot at the same net.
+function nhlShots(g){
+  const kinds = /^(Shot|Goal|Missed)$/;
+  const all = (g.s.plays || []).filter(p => kinds.test(p.type?.text || '') && p.coordinate && Math.abs(p.coordinate.x) <= 100 && Math.abs(p.coordinate.y) <= 43 && !isShootout(p));
+  if (!all.length) return '';
+  const periods = [...new Set(all.map(p => p.period?.number))].filter(Boolean);
+  const shots = all.filter(p => (view.period === 'all' || String(p.period?.number) === String(view.period)) && (view.shotTeam === 'all' || String(p.team?.id) === view.shotTeam));
+  const S = 6, X = x => (x - 25) * S, Y = y => (42.5 - y) * S; // shows x 25…100 (blue line to end boards)
+  const by = [g.away, g.home].map(c => ({ id:String(c?.team?.id), abbr:c?.team?.abbreviation, col:c === g.home ? g.hc : g.ac }));
+  const colOf = id => by.find(b => b.id === String(id))?.col || 'var(--muted)';
+  const goals = shots.filter(p => p.type?.text === 'Goal').length, onNet = shots.filter(p => p.type?.text !== 'Missed').length;
+  const dots = shots.map(p => {
+    const flip = p.coordinate.x < 0 ? -1 : 1, x = p.coordinate.x * flip, y = p.coordinate.y * flip;
+    const c = colOf(p.team?.id), kind = p.type?.text;
+    const mark = kind === 'Goal' ? `<circle cx="${X(x)}" cy="${Y(y)}" r="7" fill="${c}" stroke="var(--text)" stroke-width="1.5"/>`
+      : kind === 'Missed' ? `<path d="M${X(x)-4},${Y(y)-4}l8,8m0,-8l-8,8" stroke="${c}" stroke-width="2" fill="none"/>`
+      : `<circle cx="${X(x)}" cy="${Y(y)}" r="5" fill="none" stroke="${c}" stroke-width="2"/>`;
+    return `<g><title>${esc(p.text)}</title>${mark}</g>`;
+  }).join('');
+  const rink = `<path d="M0,0 H${X(72)} A${28*S},${28*S} 0 0 1 ${X(100)},${Y(14.5)} V${Y(-14.5)} A${28*S},${28*S} 0 0 1 ${X(72)},${Y(-42.5)} H0" fill="none" stroke="var(--border)" stroke-width="2"/>
+    <line x1="${X(25)}" x2="${X(25)}" y1="0" y2="${Y(-42.5)}" stroke="#3b82f6" stroke-width="4" opacity=".6"/>
+    <line x1="${X(89)}" x2="${X(89)}" y1="${Y(38)}" y2="${Y(-38)}" stroke="#e11d48" stroke-width="2" opacity=".6"/>
+    <path d="M${X(89)},${Y(4)} a${6*S},${4*S} 0 0 0 0,${8*S}" fill="#3b82f6" opacity=".15" stroke="#e11d48" stroke-width="1.5"/>
+    <rect x="${X(89)}" y="${Y(3)}" width="${3.3*S}" height="${6*S}" fill="none" stroke="var(--text)" stroke-width="2"/>
+    ${[22, -22].map(y => `<circle cx="${X(69)}" cy="${Y(y)}" r="${15*S}" fill="none" stroke="#e11d48" stroke-width="1.5" opacity=".45"/><circle cx="${X(69)}" cy="${Y(y)}" r="4" fill="#e11d48" opacity=".6"/>`).join('')}`;
+  return `<div class="box"><h3>Shot chart <span class="sub">${goals} goal${goals === 1 ? '' : 's'} · ${onNet} on net · ${shots.length} attempts</span></h3>
+    <div class="pchips"><button class="chip" data-shot="all" aria-pressed="${view.shotTeam==='all'}">Both</button>${by.map(b => `<button class="chip" data-shot="${esc(b.id)}" aria-pressed="${view.shotTeam===b.id}"><span class="sw" style="background:${b.col}"></span>${esc(b.abbr)}</button>`).join('')}</div>
+    ${periodChips(periods, nhlPerName)}
+    <svg viewBox="0 0 ${75*S} ${85*S}" width="100%" style="max-width:420px;display:block;margin:0 auto" role="img" aria-label="Shot chart">${rink}${dots}</svg>
+    <div class="legend"><span>● filled: goal</span><span>○ saved</span><span>× missed the net</span><span>Blocked shots aren't shown</span></div></div>`;
+}
+
 /* ---------- Preview (upcoming) ---------- */
 function renderPreview(g){
   const s = g.s, out = [];
@@ -1186,6 +1286,10 @@ const PLAYER_COLS = {
     pitching:['gamesPlayed:G','gamesStarted:GS','wins:W','losses:L','saves:SV','holds:HLD','innings:IP','ERA:ERA','WHIP:WHIP','strikeouts:K','walks:BB','strikeoutsPerNineInnings:K/9','opponentAvg:OBA','homeRuns:HR','WARBR:WAR'],
     fielding:['gamesPlayed:G','fullInningsPlayed:INN','totalChances:TC','putouts:PO','assists:A','errors:E','doublePlays:DP','fieldingPct:FPCT','defWARBR:dWAR'],
   },
+  nhl:{
+    team:['games:GP','goals:G','assists:A','points:PTS','plusMinus:+/-','powerPlayGoals:PPG','shortHandedGoals:SHG','gameWinningGoals:GWG','shotsTotal:S','shootingPct:S%','timeOnIcePerGame:TOI/G','faceoffPercent:FO%','penaltyMinutes:PIM'],
+    goalkeeping:['games:GP','wins:W','losses:L','overtimeLosses:OTL','avgGoalsAgainst:GAA','savePct:SV%','saves:SV','shotsAgainst:SA','goalsAgainst:GA','timeOnIce:TOI'],
+  },
 };
 const DERIVED = {
   ts:{ need:['points','fieldGoalsAttempted','freeThrowsAttempted'], f:(s) => s.points / (2 * (s.fieldGoalsAttempted + 0.44 * s.freeThrowsAttempted)), fmt:v => (v*100).toFixed(1), tip:'True shooting %: points per shooting possession' },
@@ -1194,10 +1298,10 @@ const DERIVED = {
   catch:{ need:['receptions','receivingTargets'], f:(s) => s.receptions / s.receivingTargets, fmt:v => (v*100).toFixed(1), tip:'Catch rate: receptions per target' },
   ypt:{ need:['receivingYards','receivingTargets'], f:(s) => s.receivingYards / s.receivingTargets, fmt:v => v.toFixed(1), tip:'Yards per target' },
 };
-const CAT_LABEL = { game:'Players', passing:'Passing', rushing:'Rushing', receiving:'Receiving', defensive:'Defense', kicking:'Kicking', punting:'Punting', returning:'Returns', scoring:'Scoring', batting:'Batting', pitching:'Pitching', fielding:'Fielding' };
-const LOWER_BETTER = /^(ERA|WHIP|walks|losses|errors|interceptions|avgTurnovers|turnovers|opponentAvg|rushingFumblesLost|sacks)$/;
+const CAT_LABEL = { team:'Skaters', goalkeeping:'Goalies', game:'Players', passing:'Passing', rushing:'Rushing', receiving:'Receiving', defensive:'Defense', kicking:'Kicking', punting:'Punting', returning:'Returns', scoring:'Scoring', batting:'Batting', pitching:'Pitching', fielding:'Fielding' };
+const LOWER_BETTER = /^(ERA|WHIP|walks|losses|errors|interceptions|avgTurnovers|turnovers|opponentAvg|rushingFumblesLost|sacks|avgGoalsAgainst|goalsAgainst|overtimeLosses)$/;
 
-function seasonLabel(league, y){ return league === 'nba' ? `${y-1}–${String(y).slice(2)}` : String(y); }
+function seasonLabel(league, y){ return league === 'nba' || league === 'nhl' ? `${y-1}–${String(y).slice(2)}` : String(y); }
 
 async function showTeam(league, id, tab){
   const fresh = tview.league !== league || tview.id !== id;
@@ -1401,6 +1505,20 @@ function teamTiles(){
     add('Red zone TD %', fix(v(S, 'miscellaneous', 'redzoneTouchdownPct')));
     add('Turnover margin', d(S, 'miscellaneous', 'turnOverDifferential'));
     add('Sacks / allowed', v(S, 'defensive', 'sacks') != null ? `${d(S, 'defensive', 'sacks')} / ${d(S, 'passing', 'sacks')}` : null);
+  } else if (L === 'nhl') {
+    const gp = v(S, 'general', 'games');
+    const gf = v(S, 'offensive', 'goals'), ga = v(S, 'defensive', 'goalsAgainst');
+    add('Goals / game', fix(gf / gp, 2));
+    add('Allowed / game', d(S, 'defensive', 'avgGoalsAgainst'));
+    add('Goal diff', gf != null && ga != null ? (gf - ga > 0 ? '+' : '') + (gf - ga) : null);
+    add('Shots / game', fix(v(S, 'offensive', 'shotsTotal') / gp, 1));
+    add('Shots against / game', fix(v(S, 'defensive', 'shotsAgainst') / gp, 1));
+    add('Shooting %', d(S, 'offensive', 'shootingPct'));
+    add('Save %', d(S, 'defensive', 'savePct'));
+    add('PDO', fix(v(S, 'offensive', 'shootingPct') + 100 * v(S, 'defensive', 'savePct'), 1), 'Shooting % + save %: around 100 is normal, far above or below usually evens out');
+    add('Power-play goals', d(S, 'offensive', 'powerPlayGoals'));
+    add('Faceoff %', d(S, 'offensive', 'faceoffPercent'));
+    add('PIM / game', fix(v(S, 'penalties', 'penaltyMinutes') / gp, 1));
   } else {
     const g = v(S, 'batting', 'teamGamesPlayed');
     add('Runs / game', fix(v(S, 'batting', 'runs') / g, 2));
@@ -1708,14 +1826,16 @@ const STAND_COLS = {
   nba:[['wins','W'],['losses','L'],['winPercent','PCT'],['_gb','GB'],['Home','HOME'],['Road','ROAD'],['vs. Conf.','CONF'],['Last Ten Games','L10'],['streak','STRK'],['differential','DIFF']],
   nfl:[['wins','W'],['losses','L'],['ties','T'],['winPercent','PCT'],['Home','HOME'],['Road','AWAY'],['divisionRecord','DIV'],['vs. Conf.','CONF'],['pointsFor','PF'],['pointsAgainst','PA'],['differential','DIFF'],['streak','STRK']],
   mlb:[['wins','W'],['losses','L'],['winPercent','PCT'],['_gb','GB'],['Home','HOME'],['Road','AWAY'],['Last Ten Games','L10'],['streak','STRK'],['pointsFor','RS'],['pointsAgainst','RA'],['pointDifferential','DIFF']],
+  nhl:[['gamesPlayed','GP'],['wins','W'],['losses','L'],['otLosses','OTL'],['points','PTS'],['_ptspct','P%'],['regWins','RW'],['rotWins','ROW'],['pointsFor','GF'],['pointsAgainst','GA'],['pointDifferential','DIFF'],['Home','HOME'],['Road','AWAY'],['Last Ten Games','L10'],['streak','STRK']],
 };
 // Playoff cut lines in the conference/league view: [after seed, label]
-const PLAYOFF_LINES = { nba:[[6, 'Playoffs'], [10, 'Play-in']], nfl:[[7, 'Playoffs']], mlb:[[6, 'Playoffs']] };
+const PLAYOFF_LINES = { nba:[[6, 'Playoffs'], [10, 'Play-in']], nfl:[[7, 'Playoffs']], mlb:[[6, 'Playoffs']], nhl:[[2, 'Wild card']] };
 // ESPN's clinch letters differ by league
 const CLINCH_BY = {
   nba:{ x:'clinched playoffs', y:'clinched division', z:'clinched top seed in conference', '*':'clinched best record in league', pb:'clinched play-in', pi:'clinched play-in', e:'eliminated' },
   nfl:{ x:'clinched playoffs', y:'clinched wild card', z:'clinched division', '*':'clinched top seed and bye', e:'eliminated' },
   mlb:{ x:'clinched division', y:'clinched wild card', z:'clinched playoffs', w:'clinched wild card', '*':'clinched best record / home field', e:'eliminated' },
+  nhl:{ x:'clinched playoffs', y:'clinched division', z:'clinched conference', p:"clinched Presidents' Trophy", '*':"clinched Presidents' Trophy", e:'eliminated' },
 };
 const clinchText = m => CLINCH_BY[tview.league]?.[m] || '';
 async function loadStandings(){
@@ -1745,11 +1865,15 @@ function standRows(entries){
     for (const x of e.stats || []) st[x.name] = x;
     const w = st.wins?.value ?? 0, l = st.losses?.value ?? 0, t = st.ties?.value ?? 0;
     const pct = st.winPercent?.value ?? (w + l + t ? (w + t / 2) / (w + l + t) : 0);
+    const gp = st.gamesPlayed?.value ?? (w + l + t + (st.otLosses?.value ?? 0)), pts = st.points?.value ?? null;
     return { id:String(e.team?.id), abbr:e.team?.abbreviation, name:e.team?.displayName, short:e.team?.shortDisplayName || e.team?.name,
-             logo:logoOf(e.team), w, l, t, pct, seed:st.playoffSeed?.value, clinch:st.clincher?.displayValue || '', st };
+             logo:logoOf(e.team), w, l, t, pct, gp, pts, rw:st.regWins?.value ?? 0, row:st.rotWins?.value ?? 0,
+             seed:st.playoffSeed?.value, clinch:st.clincher?.displayValue || '', st };
   });
 }
-const byRecord = (a, b) => b.pct - a.pct || b.w - a.w || a.l - b.l || (a.seed ?? 99) - (b.seed ?? 99);
+// NHL: points, then fewer games played, then regulation wins, then regulation + OT wins (the league's first tiebreakers)
+const byRecord = (a, b) => (a.pts != null && b.pts != null ? b.pts - a.pts || a.gp - b.gp || b.rw - a.rw || b.row - a.row : 0)
+  || b.pct - a.pct || b.w - a.w || a.l - b.l || (a.seed ?? 99) - (b.seed ?? 99);
 function standTable(title, rows, opts={}){
   const L = tview.league, cols = STAND_COLS[L];
   const lead = rows[0];
@@ -1759,10 +1883,11 @@ function standTable(title, rows, opts={}){
   const body = rows.map((r, i) => {
     const cells = cols.map(([k]) => {
       if (k === '_gb') return gb(r);
+      if (k === '_ptspct') return r.gp ? (r.pts / (2 * r.gp)).toFixed(3).replace(/^0/, '') : '';
       const x = r.st[k];
       if (!x) return '';
       if (k === 'winPercent') return (x.value ?? 0).toFixed(3).replace(/^0/, '');
-      return x.displayValue ?? x.value ?? '';
+      return String(x.displayValue ?? x.value ?? '').replace(/, \d+ PTS$/, ''); // NHL record splits carry a ", 0 PTS" suffix
     });
     const cut = lines[i + 1] && i < rows.length - 1 ? ` cut` : '';
     const mark = r.clinch ? `<sup class="clinch" title="${esc(clinchText(r.clinch) || r.clinch)}">${esc(r.clinch)}</sup>` : '';
@@ -1772,7 +1897,7 @@ function standTable(title, rows, opts={}){
   }).join('');
   return `<div class="box"><h3>${esc(title)}</h3><div class="tablewrap"><table class="stand"><thead><tr><th>Team</th>${cols.map(([, h]) => `<th>${esc(h)}</th>`).join('')}</tr></thead>
     <tbody>${body}</tbody></table></div>
-    ${opts.lines ? `<div class="note">${PLAYOFF_LINES[L].map(([n, label]) => `Line after ${ordinal(n)}: ${label.toLowerCase()} cutoff`).join(' · ')}. Order follows ESPN's playoff seeding when available.</div>` : ''}</div>`;
+    ${opts.note ? `<div class="note">${esc(opts.note)}</div>` : opts.lines ? `<div class="note">${PLAYOFF_LINES[L].map(([n, label]) => `Line after ${ordinal(n)}: ${label.toLowerCase()} cutoff`).join(' · ')}. Order follows ESPN's playoff seeding when available.</div>` : ''}</div>`;
 }
 function renderStandings(){
   const d = tview.stand;
@@ -1783,10 +1908,19 @@ function renderStandings(){
                 || (n.standings?.entries || []).some(e => String(e.team?.id) === me);
   const myConf = confs.find(has) || confs[0];
   const view = tview.sview || store.get('standView', 'division');
-  const confWord = tview.league === 'mlb' ? 'League' : 'Conference';
+  const confWord = tview.league === 'mlb' ? 'League' : tview.league === 'nhl' ? 'Wild card' : 'Conference';
   const views = [['division', 'Division'], ['conference', confWord], ['league', 'Full league']];
   let out = '';
-  if (view === 'conference') {
+  if (view === 'conference' && tview.league === 'nhl') {
+    // NHL playoff format: top 3 in each division, then the next two in the conference are the wild cards
+    for (const c of [myConf, ...confs.filter(x => x !== myConf)]) {
+      const divs = (c.children || []).map(dv => ({ name:dv.name, rows:standRows(dv.standings?.entries || []).sort(byRecord) }));
+      const mineFirst = [...divs.filter(dv => dv.rows.some(r => r.id === me)), ...divs.filter(dv => !dv.rows.some(r => r.id === me))];
+      for (const dv of mineFirst) out += standTable(`${c.name} · ${dv.name} top 3`, dv.rows.slice(0, 3));
+      const wc = divs.flatMap(dv => dv.rows.slice(3)).sort(byRecord);
+      out += standTable(`${c.name} · wild card`, wc, { lines:true, note:'The top two make the playoffs as wild cards.' });
+    }
+  } else if (view === 'conference') {
     // my conference first, then the other
     for (const c of [myConf, ...confs.filter(x => x !== myConf)]) {
       const rows = standRows((c.children || []).flatMap(dv => dv.standings?.entries || []));
@@ -1909,9 +2043,9 @@ function wireNews(){
 
 /* ---------- Router ---------- */
 function currentRoute(){
-  let m = location.hash.match(/^#\/g\/(nba|nfl|mlb)\/(\d+)/);
+  let m = location.hash.match(/^#\/g\/(nba|nfl|mlb|nhl)\/(\d+)/);
   if (m) return { name:'game', league:m[1], id:m[2] };
-  m = location.hash.match(/^#\/t\/(nba|nfl|mlb)\/(\d+)(?:\/(stats|standings|news))?/);
+  m = location.hash.match(/^#\/t\/(nba|nfl|mlb|nhl)\/(\d+)(?:\/(stats|standings|news))?/);
   if (m) return { name:'team', league:m[1], id:m[2], tab:m[3] || 'schedule' };
   return { name:'home' };
 }
