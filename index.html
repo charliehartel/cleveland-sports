@@ -250,6 +250,14 @@ sup.clinch{font-size:10px;color:var(--muted);font-weight:700}
 .nsum{font-size:13px;color:var(--muted);margin-top:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .more{margin-top:10px;width:100%;padding:8px}
 
+.hero-grid{max-width:680px;margin:0 auto}
+.tablewrap.line{max-width:620px;margin:12px auto 0}
+.cmp,.cmp-head{max-width:620px;margin-left:auto;margin-right:auto}
+.cmp .bar.nobar{background:transparent}
+details.acc .tablewrap{max-width:620px}
+.empty.slim{padding:10px 14px}
+.schedcols{display:grid;gap:0 20px;align-items:start}
+@media (min-width:900px){.schedcols{grid-template-columns:1fr 1fr}}
 .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}
 .tile{background:var(--surface-2);border-radius:10px;padding:10px 12px}
 .tile .tv{font-size:20px;font-weight:800;letter-spacing:-.01em}
@@ -509,8 +517,9 @@ function renderHome(){
       ? `<div class="err">Can't reach ESPN for scores. If you're offline, this will retry by itself. If you opened this file in a preview window (Files, Mail or a chat app), those usually block internet access, so open it in a web browser instead.</div>`
       : homeState.errors.map(e => `<div class="err">${esc(e)}. Retrying automatically.</div>`).join('')}
     ${b.live.length ? section('Live now', b.live, '') : ''}
-    ${section('Today', b.today, 'No games today.')}
-    ${section('Last 36 hours', b.recent, 'No games finished in the last 36 hours.')}
+    ${!b.today.length && !b.recent.length
+      ? `<h2 class="sec">Today</h2><div class="empty slim">No games today or in the last 36 hours.</div>`
+      : section('Today', b.today, 'No games today.') + section('Last 36 hours', b.recent, 'No games finished in the last 36 hours.')}
     ${section('Next 7 days', b.upcoming, 'Nothing scheduled in the next 7 days.')}
     <div id="home-news">${newsBlock({ team:filter === 'all' ? null : filter, limit:homeNewsLimit, home:true })}</div>`;
   if (!newsState.loading && (!newsState.data || Date.now() - newsState.fetchedAt > 5*60e3)) loadNews().then(() => { if (currentRoute().name === 'home') { const el = $('#home-news'); if (el) { el.innerHTML = newsBlock({ team:store.get('teamFilter', 'all') === 'all' ? null : store.get('teamFilter', 'all'), limit:homeNewsLimit, home:true }); wireNews(); } } });
@@ -773,7 +782,7 @@ function cmpRow(label, av, hv, opts={}){
     if (opts.lowerBetter) pa = 1 - pa;
     bar = `<div class="bar"><span style="width:${(pa*100).toFixed(1)}%;background:var(--ac)"></span><span style="width:${((1-pa)*100).toFixed(1)}%;background:var(--hc)"></span></div>`;
   }
-  return `<div class="v va">${esc(av)}</div><div class="lbl">${esc(label)}</div><div class="v">${esc(hv)}</div>${bar}`;
+  return `<div class="v va">${esc(av)}</div><div class="lbl">${esc(label)}</div><div class="v">${esc(hv)}</div>${bar || '<div class="bar nobar"></div>'}`;
 }
 function cmpHead(g){
   return `<div class="cmp-head"><span style="display:flex;gap:8px;align-items:center">${img(logoOf(g.away?.team),'logo')}${esc(g.away?.team?.abbreviation)}</span><span></span><span style="display:flex;gap:8px;align-items:center">${esc(g.home?.team?.abbreviation)}${img(logoOf(g.home?.team),'logo')}</span></div>`;
@@ -873,7 +882,7 @@ function leaders(g){
       if (!top) return '';
       return `<div class="leader">${img(top.athlete?.headshot?.href, 'hs', '')}<div><div class="cat">${esc(cat.displayName || cat.name)}</div><div class="who">${esc(top.athlete?.displayName)}</div></div><div class="small">${esc(top.displayValue)}</div></div>`;
     }).join('');
-    return `<div><div class="teamhead" style="font-size:14px">${img(logoOf(c?.team), 'logo')}${esc(c?.team?.shortDisplayName)}</div><div class="leaders">${rows}</div></div>`;
+    return `<div><div class="teamhead" style="font-size:14px">${teamLink(g.league, c?.team, img(logoOf(c?.team), 'logo') + esc(c?.team?.shortDisplayName || c?.team?.displayName || c?.team?.name || c?.team?.abbreviation || ''))}</div><div class="leaders">${rows}</div></div>`;
   });
   if (!cols.join('')) return '';
   return `<div class="box"><h3>Top performers</h3><div class="two">${cols.join('')}</div></div>`;
@@ -1193,7 +1202,7 @@ function seasonLabel(league, y){ return league === 'nba' ? `${y-1}–${String(y)
 async function showTeam(league, id, tab){
   const fresh = tview.league !== league || tview.id !== id;
   if (fresh) Object.assign(tview, { league, id, schedCurrent:null, statCurrent:null, season:null, info:null, sched:null, stats:null, players:null, statSeason:null, stype:2, nba:null, l10:null, cat:null, sort:null, allCols:false, note:'',
-    stand:null, standSeason:null, standCurrent:null, standNote:'' });
+    stand:null, standSeason:null, standCurrent:null, standNote:'', showAll:null });
   tview.tab = tab || 'schedule';
   if (!tview.info) $('#app').innerHTML = `<a class="back" href="#/">← All games</a><div class="loading">Loading team…</div>`;
   const base = `${API}/${SPORT[league]}/${league}/teams/${id}`;
@@ -1337,12 +1346,17 @@ function renderTeamSchedule(){
   const up = gs.filter(g => g.state === 'pre');
   const past = gs.filter(g => g.state === 'post').reverse();
   const w = past.filter(g => { const me = String(g.home.id) === String(tview.info.id) ? g.home : g.away; return me.winner; }).length;
-  const sec = (title, list, empty) => `<h2 class="sec">${esc(title)} <span class="count">${list.length || ''}</span></h2>` +
-    (list.length ? `<div class="slist">${list.map(srow).join('')}</div>` : `<div class="empty">${esc(empty)}</div>`);
+  const SHOW = 10;
+  const sec = (key, title, list, empty) => {
+    const all = tview.showAll?.[key];
+    const shown = all ? list : list.slice(0, SHOW);
+    return `<section><h2 class="sec">${esc(title)} <span class="count">${list.length || ''}</span></h2>` +
+      (list.length ? `<div class="slist">${shown.map(srow).join('')}</div>` : `<div class="empty">${esc(empty)}</div>`) +
+      (list.length > SHOW ? `<button class="iconbtn more" data-showall="${key}">${all ? 'Show fewer' : `Show all ${list.length}`}</button>` : '') + `</section>`;
+  };
   return `<div class="toolbar">${seasonSelect(tview.schedCurrent, tview.season)}${past.length ? `<span class="small">${w}–${past.length - w} in completed games</span>` : ''}</div>
-    ${live.length ? sec('Live now', live, '') : ''}
-    ${sec('Upcoming', up, 'No upcoming games this season.')}
-    ${sec('Results', past, 'No completed games this season yet.')}`;
+    ${live.length ? sec('live', 'Live now', live, '') : ''}
+    <div class="schedcols">${sec('up', 'Upcoming', up, 'No upcoming games this season.')}${sec('past', 'Results', past, 'No completed games this season yet.')}</div>`;
 }
 
 /* Team stats */
@@ -1490,6 +1504,7 @@ function renderPlayerStats(){
 }
 function wireTeam(){
   const app = $('#app');
+  app.querySelectorAll('[data-showall]').forEach(b => b.onclick = () => { tview.showAll = { ...(tview.showAll || {}), [b.dataset.showall]:!tview.showAll?.[b.dataset.showall] }; renderTeam(); });
   app.querySelectorAll('[data-sview]').forEach(b => b.onclick = () => { tview.sview = b.dataset.sview; store.set('standView', tview.sview); renderTeam(); });
   app.querySelectorAll('[data-season]').forEach(s => s.onchange = () => {
     const y = Number(s.value);

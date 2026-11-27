@@ -18,6 +18,11 @@ for (const t of TEAMS) {
         await page.selectOption('[data-season]', { index: 1 });
         await expect(page.locator('.srow .wl').first()).toBeVisible();
       }
+      // long lists show 10 with a "Show all" button
+      for (const list of await page.locator('.schedcols section').all()) {
+        const total = Number(await list.locator('.count').textContent() || 0);
+        expect(await list.locator('.srow').count()).toBe(Math.min(total, 10));
+      }
       await page.locator('.srow', { has: page.locator('.wl') }).first().click();
       await expect(page).toHaveURL(new RegExp(`#/g/${t.league}/\\d+`));
       await ready(page, '.score-hero');

@@ -5,7 +5,9 @@ test('home screen shows team quick links, game sections and Bay Area TV badges',
   await ready(page, '.quick');
   await expect(page.locator('.qteam')).toHaveCount(3);
   await expect(page.locator('.qteam')).toHaveText([/Cavaliers/, /Browns/, /Guardians/]);
-  for (const name of ['Today', 'Last 36 hours', 'Next 7 days']) await expect(page.locator('h2.sec', { hasText: name })).toBeVisible();
+  for (const name of ['Today', 'Next 7 days']) await expect(page.locator('h2.sec', { hasText: name })).toBeVisible();
+  // "Last 36 hours" has its own section unless both it and Today are empty, which show one line instead
+  if (!(await page.locator('h2.sec', { hasText: 'Last 36 hours' }).count())) await expect(page.locator('.empty.slim')).toHaveText('No games today or in the last 36 hours.');
   await expect(page.locator('.err')).toHaveCount(0); // no "couldn't load" banners
   // every game card has a Bay Area TV badge
   const cards = await page.locator('.card').count();
