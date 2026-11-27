@@ -128,3 +128,16 @@ base('collector drops off-topic stories, podcasts and promos', async () => {
   plainExpect(relevant(it('Browns defy odds, sit 6-4 with playoff hopes alive', 'https://www.cleveland.com/browns/x'), 'browns')).toBe(true);
   plainExpect(relevant(it("Is Deshaun Watson's future with the Browns worth betting on?", 'https://www.cleveland.com/browns/x'), 'browns')).toBe(true);
 });
+
+base('MLB.com drops league-wide pieces but keeps team stories; team-site picks columns are dropped', async () => {
+  const { relevant } = await import('../scripts/news.mjs');
+  const it = (title, url, summary = '') => ({ title, url, summary });
+  plainExpect(relevant(it('Presenting the 2026 ... All-Awardless Team!', 'https://www.mlb.com/giants/news/x'), 'giants', 'team-feed')).toBe(false);
+  plainExpect(relevant(it("Each MLB club's best prospect acquired via trade", 'https://www.mlb.com/giants/news/x'), 'giants', 'team-feed')).toBe(false);
+  plainExpect(relevant(it('Ranking the Top 30 prospects from the Fall League', 'https://www.mlb.com/giants/news/x'), 'giants', 'team-feed')).toBe(false);
+  plainExpect(relevant(it("Giants, Camilo Doval agree on one-year deal", 'https://www.mlb.com/giants/news/y'), 'giants', 'team-feed')).toBe(true);
+  plainExpect(relevant(it('Rookie DeLauter a first-time winner of Silver Slugger Award', 'https://www.mlb.com/guardians/news/z'), 'guardians', 'team-feed')).toBe(true);
+  plainExpect(relevant(it('Guardians add trio of Top 30 prospects to 40-man roster', 'https://www.mlb.com/guardians/news/z'), 'guardians', 'team-feed')).toBe(true);
+  plainExpect(relevant(it("The A's need rotation help. Could one of these 5 arms deliver?", 'https://www.mlb.com/athletics/news/z'), 'athletics', 'team-feed')).toBe(true);
+  plainExpect(relevant(it('Expert Game Picks: Raiders or Browns?', 'https://www.raiders.com/news/x'), 'raiders', 'official')).toBe(false);
+});

@@ -14,11 +14,11 @@ const PER_TEAM = 80;          // newest items kept per team
 export const TEAMS = {
   cavs:      { league: 'nba', sport: 'basketball', espnId: '5', words: ['cavaliers', 'cavs'], paths: ['cavs', 'cavaliers'] },
   browns:    { league: 'nfl', sport: 'football',   espnId: '5', words: ['browns'], paths: ['browns'] },
-  guardians: { league: 'mlb', sport: 'baseball',   espnId: '5', words: ['guardians'], paths: ['guardians', 'cleveland-guardians'] },
+  guardians: { league: 'mlb', sport: 'baseball',   espnId: '5', words: ['guardians', 'guards'], paths: ['guardians', 'cleveland-guardians'] },
   // Bay Area
   warriors:  { league: 'nba', sport: 'basketball', espnId: '9',  words: ['warriors'], paths: ['warriors', 'golden-state-warriors'] },
   niners:    { league: 'nfl', sport: 'football',   espnId: '25', words: ['49ers', 'niners'], paths: ['49ers', 'san-francisco-49ers'] },
-  giants:    { league: 'mlb', sport: 'baseball',   espnId: '26', words: ['sf giants', 'san francisco giants'], paths: ['giants', 'sf-giants', 'san-francisco-giants'] },
+  giants:    { league: 'mlb', sport: 'baseball',   espnId: '26', words: ['giants'], paths: ['giants', 'sf-giants', 'san-francisco-giants'] },
   sharks:    { league: 'nhl', sport: 'hockey',     espnId: '18', words: ['sharks'], paths: ['sharks', 'san-jose-sharks'] },
   athletics: { league: 'mlb', sport: 'baseball',   espnId: '11', words: ['athletics', "a's"], paths: ['athletics', 'oakland-athletics', 'as'] },
   raiders:   { league: 'nfl', sport: 'football',   espnId: '13', words: ['raiders'], paths: ['raiders', 'las-vegas-raiders'] },
@@ -44,8 +44,8 @@ export const RSS_SOURCES = [
       cavs:      ['https://www.nytimes.com/athletic/rss/nba/cavaliers/', 'https://theathletic.com/rss/nba/cavaliers/'],
       guardians: ['https://www.nytimes.com/athletic/rss/mlb/guardians/', 'https://theathletic.com/rss/mlb/guardians/'],
       warriors:  ['https://www.nytimes.com/athletic/rss/nba/warriors/'],
-      niners:    ['https://www.nytimes.com/athletic/rss/nfl/49ers/'],
-      giants:    ['https://www.nytimes.com/athletic/rss/mlb/giants/'],
+      niners:    ['https://www.nytimes.com/athletic/rss/nfl/49ers/', 'https://www.nytimes.com/athletic/rss/nfl/niners/', 'https://www.nytimes.com/athletic/rss/nfl/san-francisco-49ers/'],
+      giants:    ['https://www.nytimes.com/athletic/rss/mlb/giants/', 'https://www.nytimes.com/athletic/rss/mlb/sf-giants/', 'https://www.nytimes.com/athletic/rss/mlb/san-francisco-giants/'],
       sharks:    ['https://www.nytimes.com/athletic/rss/nhl/sharks/'],
       athletics: ['https://www.nytimes.com/athletic/rss/mlb/athletics/'],
       raiders:   ['https://www.nytimes.com/athletic/rss/nfl/raiders/'],
@@ -53,17 +53,22 @@ export const RSS_SOURCES = [
   },
   {
     // Official team news: everything is about the team, so only promos are dropped.
-    id: 'team', name: 'Team site', domains: ['clevelandbrowns.com', 'mlb.com', '49ers.com', 'raiders.com', 'nhl.com'], scope: 'official',
-    names: { browns: 'ClevelandBrowns.com', guardians: 'MLB.com', niners: '49ers.com', raiders: 'Raiders.com', giants: 'MLB.com', athletics: 'MLB.com', sharks: 'NHL.com' },
+    id: 'team', name: 'Team site', domains: ['clevelandbrowns.com', '49ers.com', 'raiders.com'], scope: 'official',
+    names: { browns: 'ClevelandBrowns.com', niners: '49ers.com', raiders: 'Raiders.com' },
     // NBA.com (Cavs) refuses these requests (HTTP 403), so there's no Cavs team-site feed.
     feeds: {
       browns:    ['https://www.clevelandbrowns.com/rss/news', 'https://www.clevelandbrowns.com/news/rss'],
-      guardians: ['https://www.mlb.com/guardians/feeds/news/rss.xml'],
       niners:    ['https://www.49ers.com/rss/news'],
       raiders:   ['https://www.raiders.com/rss/news'],
+    },
+  },
+  {
+    // MLB.com team feeds mix in league-wide pieces (prospect rankings, award lists); those are dropped.
+    id: 'mlbcom', name: 'MLB.com', domains: ['mlb.com'], scope: 'team-feed',
+    feeds: {
+      guardians: ['https://www.mlb.com/guardians/feeds/news/rss.xml'],
       giants:    ['https://www.mlb.com/giants/feeds/news/rss.xml'],
       athletics: ['https://www.mlb.com/athletics/feeds/news/rss.xml'],
-      sharks:    ['https://www.nhl.com/sharks/rss/news', 'https://www.nhl.com/sharks/news/rss'],
     },
   },
   {
@@ -91,28 +96,7 @@ export const RSS_SOURCES = [
     },
   },
   // ---- Bay Area outlets ----
-  {
-    id: 'mercury', name: 'The Mercury News', domains: ['mercurynews.com'],
-    feeds: {
-      warriors:  ['https://www.mercurynews.com/sports/warriors/feed/'],
-      niners:    ['https://www.mercurynews.com/sports/49ers/feed/'],
-      giants:    ['https://www.mercurynews.com/sports/giants/feed/'],
-      sharks:    ['https://www.mercurynews.com/sports/sharks/feed/'],
-      athletics: ['https://www.mercurynews.com/sports/oakland-athletics/feed/', 'https://www.mercurynews.com/sports/athletics/feed/'],
-      raiders:   ['https://www.mercurynews.com/sports/raiders/feed/'],
-    },
-  },
-  {
-    id: 'chronicle', name: 'SF Chronicle', domains: ['sfchronicle.com'],
-    feeds: {
-      warriors:  ['https://www.sfchronicle.com/sports/warriors/feed/', { url: 'https://www.sfchronicle.com/sports/feed/', filter: true }],
-      niners:    ['https://www.sfchronicle.com/sports/49ers/feed/', { url: 'https://www.sfchronicle.com/sports/feed/', filter: true }],
-      giants:    ['https://www.sfchronicle.com/sports/giants/feed/', { url: 'https://www.sfchronicle.com/sports/feed/', filter: true }],
-      sharks:    ['https://www.sfchronicle.com/sports/sharks/feed/', { url: 'https://www.sfchronicle.com/sports/feed/', filter: true }],
-      athletics: ['https://www.sfchronicle.com/sports/athletics/feed/', { url: 'https://www.sfchronicle.com/sports/feed/', filter: true }],
-      raiders:   ['https://www.sfchronicle.com/sports/raiders/feed/', { url: 'https://www.sfchronicle.com/sports/feed/', filter: true }],
-    },
-  },
+  // The Mercury News refuses these requests (HTTP 403) and no SF Chronicle feed could be found, so neither is included.
   {
     id: 'nbcsba', name: 'NBC Sports Bay Area', domains: ['nbcsportsbayarea.com', 'nbcsports.com'],
     feeds: {
@@ -177,15 +161,17 @@ const host = u => { try { return new URL(u).hostname.replace(/^www\./, ''); } ca
 const onDomain = (u, domains) => domains.some(d => host(u) === d || host(u).endsWith('.' + d));
 export const mentions = (text, words) => words.some(w => new RegExp(`\\b${w}\\b`, 'i').test(text));
 // Filler that isn't news: betting and picks, fantasy, podcasts, promotions.
-const JUNK = /\b(best bets?|betting (odds|lines|picks|preview|trends)|odds and picks|player props|straight-up picks|picks against the spread|spread picks|fantasy|podcast|sweepstakes|giveaway|sign up|text alerts|win tickets|presented by|promo code|ticket deals?)\b/i;
+const JUNK = /\b(best bets?|betting (odds|lines|picks|preview|trends)|odds and picks|player props|straight-up picks|picks against the spread|spread picks|game picks|expert picks|staff picks|fantasy|podcast|sweepstakes|giveaway|sign up|text alerts|win tickets|presented by|promo code|ticket deals?)\b/i;
 // League-wide formats that show up in team feeds.
-const LEAGUEWIDE = /\b(power rankings?|mock draft|picks|hall of fame ballot|all (30|32) teams|every team|tiers?)\b/i;
+const LEAGUEWIDE = /\b(power rankings?|mock draft|picks|hall of fame ballot|all (30|32) teams|every (team|club)|each (mlb |nfl |nba |nhl )?(club|team)|ranking|ranked|top \d+|these \d+|mlb's best|all-awardless|tiers?|thankful for)\b/i;
 // A story counts for a team if the team is named in the headline or summary, or it's in that team's section of the site.
 export function relevant(i, teamKey, scope = 'general') {
   const t = TEAMS[teamKey];
   if (JUNK.test(i.title) || /podcast/i.test(i.url)) return false;
   if (scope === 'official') return true;
-  if (scope === 'team-feed') return !LEAGUEWIDE.test(i.title);
+  if (scope === 'mention') return mentions(`${i.title} ${i.summary}`, t.words);
+  // team feeds: a story naming the team stays; otherwise drop league-wide formats
+  if (scope === 'team-feed') return mentions(i.title, t.words) || !LEAGUEWIDE.test(i.title);
   let path = '';
   try { path = new URL(i.url).pathname.toLowerCase(); } catch {}
   return mentions(`${i.title} ${i.summary}`, t.words) || t.paths.some(p => path.split('/').includes(p));
