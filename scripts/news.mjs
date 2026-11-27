@@ -185,6 +185,7 @@ export async function collect() {
     jobs.push(espn(teamKey).then(list => ({ id: 'espn', name: 'ESPN', teamKey, url: 'site.api.espn.com', list }))
       .catch(e => ({ id: 'espn', name: 'ESPN', teamKey, error: e.message })));
     for (const s of RSS_SOURCES) {
+      if (!s.feeds[teamKey]?.length) continue; // source doesn't cover this team
       jobs.push(rss(s, teamKey).then(r => ({ id: s.id, name: s.names?.[teamKey] || s.name, teamKey, url: r.url, list: r.items, paywall: !!s.paywall }))
         .catch(e => ({ id: s.id, name: s.names?.[teamKey] || s.name, teamKey, error: e.message })));
     }
