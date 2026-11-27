@@ -173,6 +173,40 @@ svg text{font-family:inherit}
 .kv{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:14px}
 .kv dt{color:var(--muted)}
 .kv dd{margin:0}
+.tlink{color:inherit;text-decoration:none;cursor:pointer;display:inline-flex;align-items:center;gap:10px;border-radius:6px}
+.tlink:hover{text-decoration:underline;text-underline-offset:3px}
+.trow .tlink{flex:none;padding:2px;margin:-2px}
+.trow .tlink:hover img{transform:scale(1.12)}
+.trow img{transition:transform .12s}
+.team-hero{display:flex;align-items:center;gap:14px;background:var(--surface);border:1px solid var(--border);border-left:6px solid var(--tc);border-radius:14px;padding:14px 16px;box-shadow:var(--shadow)}
+.team-hero .tlogo{width:56px;height:56px;object-fit:contain}
+.team-hero .tname{font-size:20px;font-weight:800;letter-spacing:-.01em}
+a.tab{text-decoration:none;display:inline-block}
+.toolbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:4px 0 4px}
+.seasonsel select{font:inherit;color:var(--text);background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:4px 8px;margin-left:6px}
+.slist{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.srow{display:grid;grid-template-columns:110px 1fr auto;gap:4px 12px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border);text-decoration:none}
+.srow:last-child{border-bottom:none}
+.srow:hover{background:var(--surface-2)}
+.sdate{font-size:13px;color:var(--muted)}
+.ptag{display:inline-block;margin-left:6px;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--accent)}
+.sopp{display:flex;align-items:center;gap:8px;min-width:0}
+.sopp .vs{color:var(--faint);font-size:12px;width:18px}
+.sopp .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.sres{text-align:right;white-space:nowrap}
+.sbay{grid-column:2 / -1}
+.sbay .bay{margin-top:0}
+.wl{font-weight:800}
+.wl.W{color:var(--good)} .wl.L{color:var(--live)}
+@media (max-width:520px){.srow{grid-template-columns:76px 1fr auto}.sdate{font-size:12px}}
+details.acc>summary{grid-template-columns:1fr auto}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}
+.tile{background:var(--surface-2);border-radius:10px;padding:10px 12px}
+.tile .tv{font-size:20px;font-weight:800;letter-spacing:-.01em}
+.tile .tl{font-size:12px;color:var(--muted)}
+.sortbtn{background:none;border:none;padding:0;font:inherit;color:inherit;cursor:pointer;white-space:nowrap}
+.sortbtn.on{color:var(--text)}
+.ptable td.sorted{background:color-mix(in srgb,var(--accent) 7%,var(--surface));font-weight:700}
 </style>
 </head>
 <body>
@@ -393,7 +427,7 @@ function buckets(games, filter){
 function teamRow(s, g){
   const showScore = g.state !== 'pre' && s.score != null;
   const cls = g.state === 'post' && showScore ? (s.winner ? 'win' : 'lose') : '';
-  return `<div class="trow ${cls}">${img(s.logo, '', s.abbr)}<span class="nm">${esc(s.short || s.name)}<span class="rec">${esc(s.record)}</span></span>${showScore ? `<span class="sc">${esc(s.score)}</span>` : ''}</div>`;
+  return `<div class="trow ${cls}">${teamLink(g.team.league, { id:s.id, displayName:s.name, abbreviation:s.abbr }, img(s.logo, '', s.abbr), true)}<span class="nm">${esc(s.short || s.name)}<span class="rec">${esc(s.record)}</span></span>${showScore ? `<span class="sc">${esc(s.score)}</span>` : ''}</div>`;
 }
 function card(g){
   let status;
@@ -510,8 +544,8 @@ function hero(g){
     const cls = state === 'post' ? (c.winner ? 'win' : 'lose') : '';
     const rec = recOf(c);
     const poss = state === 'in' && g.league === 'nfl' && (c.possession || String(view.sit?.possession) === String(c.team?.id)) ? '● Ball' : '';
-    return `<div class="hteam ${cls}">${img(logoOf(c.team), '', c.team?.abbreviation)}
-      <div class="tn">${esc(c.team?.shortDisplayName || c.team?.displayName)}</div><div class="tr">${esc(rec)}</div>
+    return `<div class="hteam ${cls}">${teamLink(g.league, c.team, img(logoOf(c.team), '', c.team?.abbreviation))}
+      <div class="tn">${teamLink(g.league, c.team, esc(c.team?.shortDisplayName || c.team?.displayName))}</div><div class="tr">${esc(rec)}</div>
       ${state !== 'pre' ? `<div class="ts num">${esc(scoreOf(c.score) ?? 0)}</div>` : ''}<div class="poss">${esc(poss)}</div></div>`;
   };
   const date = new Date(comp.date);
@@ -617,7 +651,7 @@ function renderBox(g){
       }
       return `${g.league !== 'nba' ? `<div class="grp-title">${esc(grpTitle(gp))}</div>` : ''}<div class="tablewrap"><table><thead>${head}</thead><tbody>${rows.join('')}</tbody></table></div>`;
     }).join('');
-    return `<div class="box"><div class="teamhead">${img(logoOf(p.team), 'logo', p.team?.abbreviation)}${esc(p.team?.displayName)}</div>${groups}</div>`;
+    return `<div class="box"><div class="teamhead">${teamLink(g.league, p.team, img(logoOf(p.team), 'logo', p.team?.abbreviation) + esc(p.team?.displayName))}</div>${groups}</div>`;
   });
   return teams.join('') + (g.league === 'nba' ? `<div class="note">TS% (true shooting) and eFG% (effective field goal) are calculated from the box score.</div>` : '');
 }
@@ -1009,20 +1043,374 @@ function renderPreview(g){
   return out.join('');
 }
 
+/* ---------- Team page ---------- */
+// Logo/name link to a team page. Inside a card (which is itself a link), a span with data-team is used instead of <a>.
+function teamLink(league, team, inner, asSpan=false){
+  const id = team?.id;
+  if (!id) return inner;
+  const label = `Open ${team.displayName || team.name || team.abbreviation || 'team'} team page`;
+  return asSpan
+    ? `<span class="tlink" role="link" tabindex="0" data-team="${esc(league)}/${esc(id)}" aria-label="${esc(label)}">${inner}</span>`
+    : `<a class="tlink" href="#/t/${esc(league)}/${esc(id)}" aria-label="${esc(label)}">${inner}</a>`;
+}
+const tview = { league:null, id:null, tab:'schedule', season:null, info:null, sched:null, stats:null, players:null,
+                statSeason:null, stype:2, cat:null, sort:null, allCols:false, note:'' };
+
+// Curated player columns: "name" or "name:Label". Derived columns start with "=".
+const PLAYER_COLS = {
+  nba:{ game:['gamesPlayed:GP','avgMinutes:MIN','avgPoints:PTS','avgRebounds:REB','avgAssists:AST','avgSteals:STL','avgBlocks:BLK','avgTurnovers:TO','fieldGoalPct:FG%','threePointFieldGoalPct:3P%','freeThrowPct:FT%','avgThreePointFieldGoalsMade:3PM','=ts:TS%','=efg:eFG%'] },
+  nfl:{
+    passing:['gamesPlayed:GP','completions:CMP','passingAttempts:ATT','completionPct:CMP%','passingYards:YDS','yardsPerPassAttempt:Y/A','=anya:ANY/A','passingTouchdowns:TD','interceptions:INT','sacks:SACK','QBRating:RTG','adjQBR:QBR'],
+    rushing:['gamesPlayed:GP','rushingAttempts:CAR','rushingYards:YDS','yardsPerRushAttempt:AVG','rushingTouchdowns:TD','longRushing:LNG','rushingBigPlays:BIG','rushingFirstDowns:1D','rushingFumblesLost:FL'],
+    receiving:['gamesPlayed:GP','receptions:REC','receivingTargets:TGT','=catch:CATCH%','receivingYards:YDS','yardsPerReception:Y/R','=ypt:Y/TGT','receivingTouchdowns:TD','longReception:LNG','receivingYardsAfterCatch:YAC','receivingFirstDowns:1D'],
+    defensive:['gamesPlayed:GP','totalTackles:TOT','soloTackles:SOLO','sacks:SACK','tacklesForLoss:TFL','stuffs:STF','passesDefended:PD','interceptions:INT','fumblesForced:FF','fumblesRecovered:FR'],
+    kicking:['fieldGoalsMade:FGM','fieldGoalAttempts:FGA','fieldGoalPct:FG%','longFieldGoalMade:LNG','fieldGoalsMade50:50+','extraPointsMade:XPM','extraPointAttempts:XPA','totalKickingPoints:PTS'],
+    punting:['punts:PUNTS','puntYards:YDS','grossAvgPuntYards:AVG','netAvgPuntYards:NET','puntsInside20:IN20','touchbacks:TB','longPunt:LNG'],
+    returning:['kickReturns:KR','kickReturnYards:KR YDS','yardsPerKickReturn:KR AVG','kickReturnTouchdowns:KR TD','puntReturns:PR','puntReturnYards:PR YDS','yardsPerPuntReturn:PR AVG','puntReturnTouchdowns:PR TD'],
+    scoring:['totalTouchdowns:TD','rushingTouchdowns:RUSH TD','receivingTouchdowns:REC TD','returnTouchdowns:RET TD','fieldGoals:FG','kickExtraPoints:XP','totalTwoPointConvs:2PT','totalPoints:PTS'],
+  },
+  mlb:{
+    batting:['gamesPlayed:G','plateAppearances:PA','atBats:AB','runs:R','hits:H','doubles:2B','homeRuns:HR','RBIs:RBI','stolenBases:SB','walks:BB','strikeouts:SO','avg:AVG','onBasePct:OBP','slugAvg:SLG','OPS:OPS','isolatedPower:ISO','WARBR:WAR'],
+    pitching:['gamesPlayed:G','gamesStarted:GS','wins:W','losses:L','saves:SV','holds:HLD','innings:IP','ERA:ERA','WHIP:WHIP','strikeouts:K','walks:BB','strikeoutsPerNineInnings:K/9','opponentAvg:OBA','homeRuns:HR','WARBR:WAR'],
+    fielding:['gamesPlayed:G','fullInningsPlayed:INN','totalChances:TC','putouts:PO','assists:A','errors:E','doublePlays:DP','fieldingPct:FPCT','defWARBR:dWAR'],
+  },
+};
+const DERIVED = {
+  ts:{ need:['points','fieldGoalsAttempted','freeThrowsAttempted'], f:(s) => s.points / (2 * (s.fieldGoalsAttempted + 0.44 * s.freeThrowsAttempted)), fmt:v => (v*100).toFixed(1), tip:'True shooting %: points per shooting possession' },
+  efg:{ need:['fieldGoalsMade','threePointFieldGoalsMade','fieldGoalsAttempted'], f:(s) => (s.fieldGoalsMade + 0.5 * s.threePointFieldGoalsMade) / s.fieldGoalsAttempted, fmt:v => (v*100).toFixed(1), tip:'Effective FG%: counts a 3 as 1.5 makes' },
+  anya:{ need:['passingYards','passingTouchdowns','interceptions','sackYardsLost','passingAttempts','sacks'], f:(s) => (s.passingYards + 20*s.passingTouchdowns - 45*s.interceptions - s.sackYardsLost) / (s.passingAttempts + s.sacks), fmt:v => v.toFixed(2), tip:'Adjusted net yards per attempt: credits TDs, penalizes INTs and sacks' },
+  catch:{ need:['receptions','receivingTargets'], f:(s) => s.receptions / s.receivingTargets, fmt:v => (v*100).toFixed(1), tip:'Catch rate: receptions per target' },
+  ypt:{ need:['receivingYards','receivingTargets'], f:(s) => s.receivingYards / s.receivingTargets, fmt:v => v.toFixed(1), tip:'Yards per target' },
+};
+const CAT_LABEL = { game:'Players', passing:'Passing', rushing:'Rushing', receiving:'Receiving', defensive:'Defense', kicking:'Kicking', punting:'Punting', returning:'Returns', scoring:'Scoring', batting:'Batting', pitching:'Pitching', fielding:'Fielding' };
+const LOWER_BETTER = /^(ERA|WHIP|walks|losses|errors|interceptions|avgTurnovers|turnovers|opponentAvg|rushingFumblesLost|sacks)$/;
+
+function seasonLabel(league, y){ return league === 'nba' ? `${y-1}–${String(y).slice(2)}` : String(y); }
+
+async function showTeam(league, id, tab){
+  const fresh = tview.league !== league || tview.id !== id;
+  if (fresh) Object.assign(tview, { league, id, schedCurrent:null, statCurrent:null, season:null, info:null, sched:null, stats:null, players:null, statSeason:null, cat:null, sort:null, allCols:false, note:'' });
+  tview.tab = tab || 'schedule';
+  if (!tview.info) $('#app').innerHTML = `<a class="back" href="#/">← All games</a><div class="loading">Loading team…</div>`;
+  const base = `${API}/${SPORT[league]}/${league}/teams/${id}`;
+  try {
+    if (!tview.info) tview.info = (await getJSON(base)).team;
+    if (tview.tab === 'schedule') await loadTeamSchedule(base);
+    else await loadTeamStats(base);
+    const r = currentRoute();
+    if (r.name !== 'team' || r.id !== id) return;
+    renderTeam();
+    setUpdated();
+    const live = tview.tab === 'schedule' && (tview.sched || []).some(g => g.state === 'in');
+    if (live) schedule(() => showTeam(league, id, tview.tab), 30e3);
+  } catch (e) {
+    $('#app').innerHTML = `<a class="back" href="#/">← All games</a><div class="err">Couldn't load this team (${esc(e.message)}). Pull to refresh or tap ↻.</div>`;
+  }
+}
+function pseudoTeam(info, league){
+  return { key:'t' + info.id, label:info.shortDisplayName || info.name, league, sport:SPORT[league], abbr:(info.abbreviation || '').toLowerCase(),
+           color:hexColor(info.color) || 'var(--accent)', id:String(info.id) };
+}
+async function loadTeamSchedule(base){
+  const t = pseudoTeam(tview.info, tview.league);
+  const q = tview.season ? `&season=${tview.season}` : '';
+  const res = await Promise.allSettled([2, 3].map(st => getJSON(`${base}/schedule?seasontype=${st}${q}`)));
+  const events = new Map();
+  let year = null, ok = false;
+  res.forEach((r, i) => {
+    if (r.status !== 'fulfilled') return;
+    ok = true;
+    year ||= r.value.requestedSeason?.year || r.value.season?.year;
+    (r.value.events || []).forEach(e => { const g = norm(e, t); g.postseason = i === 1; events.set(e.id, g); });
+  });
+  if (!ok) throw new Error('schedule unavailable');
+  if (!tview.season || tview.season === tview.schedCurrent) {
+    try {
+      const sb = await leagueScoreboard(t);
+      for (const e of sb.events || []) if (events.has(e.id)) { const g = norm(e, t); g.postseason = events.get(e.id).postseason; events.set(e.id, g); }
+    } catch {}
+  }
+  tview.schedCurrent ||= year;
+  tview.season ||= year;
+  tview.sched = [...events.values()].sort((a, b) => a.date - b.date);
+  const now = Date.now();
+  await refineBay(tview.sched.filter(g => g.state === 'pre' && g.date - now < 8*24*H));
+}
+async function loadTeamStats(base){
+  const want = tview.statSeason;
+  const get = async (y) => {
+    const q = `?seasontype=${tview.stype}` + (y ? `&season=${y}` : '');
+    const [st, pl] = await Promise.all([getJSON(`${base}/statistics${q}`), getJSON(`${base}/athletes/statistics${q}`)]);
+    const hasPlayers = (pl.results || []).some(c => (c.leaders || []).length);
+    return { st, pl, hasPlayers, year:pl.requestedSeason?.year || st.requestedSeason?.year || y };
+  };
+  let d = await get(want);
+  if (!want) tview.statCurrent ||= d.year;
+  tview.note = '';
+  if (!d.hasPlayers && !tview.statSeason && d.year) {
+    const prev = await get(d.year - 1).catch(() => null);
+    if (prev?.hasPlayers) { tview.note = `The ${seasonLabel(tview.league, d.year)} season hasn't started, so this shows ${seasonLabel(tview.league, prev.year)}.`; d = prev; }
+  }
+  tview.statCurrent ||= d.year;
+  tview.statSeason = d.year;
+  tview.stats = d.st;
+  tview.players = d.pl;
+  const cats = (d.pl.results || []).filter(c => (c.leaders || []).length).map(c => c.name);
+  if (!cats.includes(tview.cat)) { tview.cat = cats[0] || null; tview.sort = null; }
+}
+
+function renderTeam(){
+  const t = tview.info, league = tview.league;
+  const rec = t.record?.items?.[0]?.summary || '';
+  const color = hexColor(t.color) || 'var(--accent)';
+  document.title = `${t.displayName} · Cleveland Sports`;
+  const body = tview.tab === 'schedule' ? renderTeamSchedule() : renderTeamStatsPage();
+  $('#app').innerHTML = `<a class="back" href="#/">← All games</a>
+    <div class="team-hero" style="--tc:${color}">
+      ${img(logoOf(t), 'tlogo', t.abbreviation)}
+      <div><div class="tname">${esc(t.displayName)}</div>
+      <div class="small">${esc([rec, t.standingSummary].filter(Boolean).join(' · '))}</div></div>
+    </div>
+    <div class="tabs" role="tablist">
+      <a class="tab" role="tab" href="#/t/${league}/${esc(t.id)}" aria-selected="${tview.tab === 'schedule'}">Schedule</a>
+      <a class="tab" role="tab" href="#/t/${league}/${esc(t.id)}/stats" aria-selected="${tview.tab === 'stats'}">Team Stats</a>
+    </div>${body}`;
+  wireTeam();
+}
+function seasonSelect(current, selected){
+  if (!current) return '';
+  const ys = [current, current - 1, current - 2];
+  return `<label class="small seasonsel">Season <select data-season>${ys.map(y => `<option value="${y}" ${y === selected ? 'selected' : ''}>${esc(seasonLabel(tview.league, y))}</option>`).join('')}</select></label>`;
+}
+function srow(g){
+  const myId = String(tview.info.id);
+  const me = String(g.home.id) === myId ? g.home : g.away;
+  const opp = me === g.home ? g.away : g.home;
+  const at = me === g.away ? '@' : 'vs';
+  let res;
+  if (g.state === 'post' && me.score != null && opp.score != null) {
+    const w = me.winner ? 'W' : opp.winner ? 'L' : 'T';
+    res = `<span class="wl ${w}">${w}</span> <span class="num">${esc(me.score)}–${esc(opp.score)}</span>`;
+  } else if (g.state === 'post') res = `<span class="small">${esc(g.detail || 'Final')}</span>`;
+  else if (g.state === 'in') res = `<span class="status-live">${esc(me.score ?? 0)}–${esc(opp.score ?? 0)} · ${esc(g.detail)}</span>`;
+  else res = `<span class="small">${esc(fmtTime(g.date))}</span>`;
+  const oppTeam = { id:opp.id, displayName:opp.name, abbreviation:opp.abbr };
+  return `<a class="srow" href="#/g/${tview.league}/${esc(g.id)}">
+    <span class="sdate">${esc(fmtDay(g.date))}${g.postseason ? '<span class="ptag">Playoffs</span>' : ''}</span>
+    <span class="sopp"><span class="vs">${at}</span>${teamLink(tview.league, oppTeam, img(opp.logo, 'logo', opp.abbr), true)}<span class="nm">${esc(opp.short || opp.name)}</span></span>
+    <span class="sres">${res}</span>
+    ${g.state === 'pre' ? `<span class="sbay">${bayPill(g.bay)}</span>` : ''}</a>`;
+}
+function renderTeamSchedule(){
+  const gs = tview.sched || [];
+  const live = gs.filter(g => g.state === 'in');
+  const up = gs.filter(g => g.state === 'pre');
+  const past = gs.filter(g => g.state === 'post').reverse();
+  const w = past.filter(g => { const me = String(g.home.id) === String(tview.info.id) ? g.home : g.away; return me.winner; }).length;
+  const sec = (title, list, empty) => `<h2 class="sec">${esc(title)} <span class="count">${list.length || ''}</span></h2>` +
+    (list.length ? `<div class="slist">${list.map(srow).join('')}</div>` : `<div class="empty">${esc(empty)}</div>`);
+  return `<div class="toolbar">${seasonSelect(tview.schedCurrent, tview.season)}${past.length ? `<span class="small">${w}–${past.length - w} in completed games</span>` : ''}</div>
+    ${live.length ? sec('Live now', live, '') : ''}
+    ${sec('Upcoming', up, 'No upcoming games this season.')}
+    ${sec('Results', past, 'No completed games this season yet.')}`;
+}
+
+/* Team stats */
+function statIndex(cats){
+  const ix = {};
+  for (const c of cats || []) for (const s of c.stats || []) (ix[c.name] ||= {})[s.name] = s;
+  return ix;
+}
+function teamTiles(){
+  const r = tview.stats?.results || {};
+  const S = statIndex(r.stats?.categories), O = statIndex(r.opponent);
+  const recItems = tview.info.record?.items?.[0]?.stats || [];
+  const rec = n => recItems.find(s => s.name === n)?.value;
+  const v = (ix, c, n) => ix[c]?.[n]?.value;
+  const d = (ix, c, n) => ix[c]?.[n]?.displayValue;
+  const fix = (x, n=1) => x == null || !isFinite(x) ? null : x.toFixed(n);
+  const L = tview.league, tiles = [];
+  const add = (label, value, tip='') => { if (value != null && value !== '') tiles.push({ label, value, tip }); };
+  if (L === 'nba') {
+    const o = S.offensive || {};
+    const tot = n => o[n]?.value;
+    const poss = tot('fieldGoalsAttempted') + 0.44 * tot('freeThrowsAttempted') - tot('offensiveRebounds') + tot('turnovers');
+    if (tview.statSeason === tview.statCurrent) { add('Points / game', fix(rec('avgPointsFor'))); add('Allowed / game', fix(rec('avgPointsAgainst'))); add('Point diff / game', fix(rec('differential'))); }
+    else add('Points / game', d(S, 'offensive', 'avgPoints'));
+    add('Offensive rating', fix(100 * tot('points') / poss), 'Points per 100 possessions (estimated from season totals)');
+    add('True shooting %', fix(100 * tot('points') / (2 * (tot('fieldGoalsAttempted') + 0.44 * tot('freeThrowsAttempted')))));
+    add('eFG%', fix(100 * (tot('fieldGoalsMade') + 0.5 * tot('threePointFieldGoalsMade')) / tot('fieldGoalsAttempted')));
+    add('3P%', d(S, 'offensive', 'threePointFieldGoalPct'));
+    add('3PA / game', d(S, 'offensive', 'avgThreePointFieldGoalsAttempted'));
+    add('Assists / game', d(S, 'offensive', 'avgAssists'));
+    add('Rebounds / game', d(S, 'general', 'avgRebounds'));
+    add('Turnover %', fix(100 * tot('turnovers') / poss), 'Turnovers per 100 possessions');
+    add('AST/TO', d(S, 'general', 'assistTurnoverRatio'));
+  } else if (L === 'nfl') {
+    const gp = v(S, 'passing', 'teamGamesPlayed') || v(S, 'general', 'gamesPlayed');
+    add('Points / game', d(S, 'scoring', 'totalPointsPerGame'));
+    add('Allowed / game', d(O, 'scoring', 'totalPointsPerGame'));
+    add('Yards / game', fix(v(S, 'rushing', 'totalYards') / gp));
+    add('Allowed yds / game', fix(v(O, 'rushing', 'totalYards') / gp));
+    add('Yards / play', fix(v(S, 'rushing', 'totalYards') / v(S, 'rushing', 'totalOffensivePlays'), 2));
+    add('Allowed yds / play', fix(v(O, 'rushing', 'totalYards') / v(O, 'rushing', 'totalOffensivePlays'), 2));
+    add('3rd down %', fix(v(S, 'miscellaneous', 'thirdDownConvPct')));
+    add('Red zone TD %', fix(v(S, 'miscellaneous', 'redzoneTouchdownPct')));
+    add('Turnover margin', d(S, 'miscellaneous', 'turnOverDifferential'));
+    add('Sacks / allowed', v(S, 'defensive', 'sacks') != null ? `${d(S, 'defensive', 'sacks')} / ${d(S, 'passing', 'sacks')}` : null);
+  } else {
+    const g = v(S, 'batting', 'teamGamesPlayed');
+    add('Runs / game', fix(v(S, 'batting', 'runs') / g, 2));
+    add('Allowed / game', fix(v(S, 'pitching', 'runs') / g, 2));
+    add('AVG / OBP / SLG', [d(S, 'batting', 'avg'), d(S, 'batting', 'onBasePct'), d(S, 'batting', 'slugAvg')].every(Boolean) ? `${d(S, 'batting', 'avg')} / ${d(S, 'batting', 'onBasePct')} / ${d(S, 'batting', 'slugAvg')}` : null);
+    add('OPS', d(S, 'batting', 'OPS'));
+    add('Home runs', d(S, 'batting', 'homeRuns'));
+    add('Stolen bases', d(S, 'batting', 'stolenBases'));
+    add('ERA', d(S, 'pitching', 'ERA'));
+    add('WHIP', d(S, 'pitching', 'WHIP'));
+    add('K / 9', d(S, 'pitching', 'strikeoutsPerNineInnings'));
+    add('Fielding %', d(S, 'fielding', 'fieldingPct'));
+  }
+  return tiles;
+}
+function renderTeamStatsPage(){
+  const r = tview.stats?.results || {};
+  const cats = r.stats?.categories || [];
+  const opp = statIndex(r.opponent);
+  const tiles = teamTiles();
+  const toolbar = `<div class="toolbar">${seasonSelect(tview.statCurrent, tview.statSeason)}
+    <span class="pchips" style="margin:0">${[[2, 'Regular season'], [3, 'Playoffs']].map(([v, l]) => `<button class="chip" data-stype="${v}" aria-pressed="${tview.stype === v}">${l}</button>`).join('')}</span></div>${tview.note ? `<div class="note" style="margin:0 0 12px">${esc(tview.note)}</div>` : ''}`;
+  const overall = `<div class="box"><h3>Overall <span class="sub">${esc(seasonLabel(tview.league, tview.statSeason))} ${tview.stype === 3 ? 'playoffs' : 'regular season'}</span></h3>
+    ${tiles.length ? `<div class="tiles">${tiles.map(t => `<div class="tile" title="${esc(t.tip)}"><div class="tv num">${esc(t.value)}</div><div class="tl">${esc(t.label)}</div></div>`).join('')}</div>` : '<div class="empty">No team stats yet.</div>'}
+    </div>`;
+  const all = cats.length ? `<div class="box"><h3>All team stats <span class="sub">tap a category</span></h3>${cats.map(c => {
+      const rows = (c.stats || []).filter(s => s.displayValue !== undefined && !/^(teamGamesPlayed|gamesPlayed|gamesStarted|isQualified)$/.test(s.name));
+      if (!rows.length) return '';
+      const hasOpp = !!opp[c.name];
+      return `<details class="drive acc"><summary><div class="res">${esc(c.displayName || c.name)}</div><span class="small">${rows.length} stats</span></summary>
+        <div class="tablewrap" style="margin:0 12px 12px"><table><thead><tr><th>Stat</th><th>${esc(tview.info.abbreviation)}</th>${hasOpp ? '<th>Opponents</th>' : ''}</tr></thead><tbody>
+        ${rows.map(s => `<tr><td title="${esc(s.description || '')}">${esc(s.displayName || s.name)}</td><td>${esc(s.displayValue)}</td>${hasOpp ? `<td>${esc(opp[c.name]?.[s.name]?.displayValue ?? '')}</td>` : ''}</tr>`).join('')}
+        </tbody></table></div></details>`;
+    }).join('')}</div>` : '';
+  return toolbar + overall + renderPlayerStats() + all;
+}
+function playerRows(cat){
+  return (cat.leaders || []).map(l => {
+    const vals = {};
+    for (const g of l.statistics || []) for (const s of g.stats || []) if (!(s.name in vals)) vals[s.name] = s;
+    return { id:l.athlete?.id, name:l.athlete?.displayName || '', short:l.athlete?.shortName || l.athlete?.displayName || '', pos:l.athlete?.position?.abbreviation || '', vals };
+  });
+}
+function playerColumns(cat, rows){
+  const L = tview.league;
+  if (tview.allCols) {
+    const seen = new Map();
+    rows.forEach(r => Object.values(r.vals).forEach(s => { if (!seen.has(s.name) && !/^(isQualified|teamGamesPlayed)$/.test(s.name)) seen.set(s.name, { key:s.name, label:s.abbreviation || s.shortDisplayName || s.name, tip:s.displayName || s.description || '' }); }));
+    return [...seen.values()];
+  }
+  const spec = PLAYER_COLS[L]?.[cat.name];
+  if (!spec) { tview.allCols = true; return playerColumns(cat, rows); }
+  return spec.map(x => {
+    const [k, label] = x.split(':');
+    if (k.startsWith('=')) { const d = DERIVED[k.slice(1)]; return { key:k, label, tip:d.tip, derived:d }; }
+    const any = rows.find(r => r.vals[k]);
+    return any ? { key:k, label:label || any.vals[k].abbreviation, tip:any.vals[k].displayName || '' } : null;
+  }).filter(Boolean).filter(c => !c.derived || rows.some(r => c.derived.need.every(n => r.vals[n])));
+}
+function cellValue(r, c){
+  if (c.derived) {
+    if (!c.derived.need.every(n => r.vals[n])) return { v:null, d:'–' };
+    const s = Object.fromEntries(c.derived.need.map(n => [n, r.vals[n].value]));
+    const v = c.derived.f(s);
+    return isFinite(v) ? { v, d:c.derived.fmt(v) } : { v:null, d:'–' };
+  }
+  const s = r.vals[c.key];
+  return s ? { v:typeof s.value === 'number' ? s.value : num(s.displayValue), d:s.displayValue } : { v:null, d:'–' };
+}
+function renderPlayerStats(){
+  const cats = (tview.players?.results || []).filter(c => (c.leaders || []).length);
+  if (!cats.length) return `<div class="box"><h3>Individual</h3><div class="empty">No player stats for this ${tview.stype === 3 ? 'postseason' : 'season'}${tview.stype === 3 ? ' (they may not have made the playoffs)' : ' yet'}.</div></div>`;
+  const cat = cats.find(c => c.name === tview.cat) || cats[0];
+  const rows = playerRows(cat);
+  const cols = playerColumns(cat, rows);
+  if (!tview.sort) {
+    const [k, dir] = String(cat.sort || '').split(':');
+    tview.sort = cols.some(c => c.key === k) ? { key:k, dir:dir || 'desc' } : { key:cols[1]?.key || cols[0]?.key, dir:'desc' };
+  }
+  const { key, dir } = tview.sort;
+  const sorted = [...rows].sort((a, b) => {
+    if (key === '_name') return dir === 'asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name);
+    const c = cols.find(x => x.key === key);
+    const va = c ? cellValue(a, c).v : null, vb = c ? cellValue(b, c).v : null;
+    if (va == null && vb == null) return 0;
+    if (va == null) return 1;
+    if (vb == null) return -1;
+    return dir === 'asc' ? va - vb : vb - va;
+  });
+  const arrow = k => k === key ? (dir === 'asc' ? ' ▲' : ' ▼') : '';
+  const aria = k => k === key ? (dir === 'asc' ? 'ascending' : 'descending') : 'none';
+  const head = `<tr><th aria-sort="${aria('_name')}"><button class="sortbtn" data-sort="_name">Player${arrow('_name')}</button></th>${cols.map(c =>
+    `<th aria-sort="${aria(c.key)}" title="${esc(c.tip)}"><button class="sortbtn${c.key === key ? ' on' : ''}" data-sort="${esc(c.key)}">${esc(c.label)}${arrow(c.key)}</button></th>`).join('')}</tr>`;
+  const body = sorted.map(r => `<tr><td class="pl">${esc(r.short)}<span class="pos">${esc(r.pos)}</span></td>${cols.map(c => `<td class="${c.key === key ? 'sorted' : ''}">${esc(cellValue(r, c).d)}</td>`).join('')}</tr>`).join('');
+  const chips = cats.length > 1 ? `<div class="pchips">${cats.map(c => `<button class="chip" data-cat="${esc(c.name)}" aria-pressed="${c.name === cat.name}">${esc(CAT_LABEL[c.name] || c.displayName)}</button>`).join('')}</div>` : '';
+  const derivedUsed = cols.filter(c => c.derived);
+  return `<div class="box"><h3>Individual <span class="sub">tap a column to sort</span></h3>${chips}
+    <div class="toolbar" style="margin:0 0 8px"><label class="small"><input type="checkbox" data-allcols ${tview.allCols ? 'checked' : ''}> Show every stat</label></div>
+    <div class="tablewrap"><table class="ptable"><thead>${head}</thead><tbody>${body}</tbody></table></div>
+    ${derivedUsed.length ? `<div class="note">${derivedUsed.map(c => `${esc(c.label)}: ${esc(c.derived.tip)}`).join(' · ')}. Calculated from season totals.</div>` : ''}</div>`;
+}
+function wireTeam(){
+  const app = $('#app');
+  app.querySelectorAll('[data-season]').forEach(s => s.onchange = () => {
+    const y = Number(s.value);
+    if (tview.tab === 'schedule') { tview.season = y; tview.sched = null; }
+    else { tview.statSeason = y; tview.sort = null; }
+    showTeam(tview.league, tview.id, tview.tab);
+  });
+  app.querySelectorAll('[data-stype]').forEach(b => b.onclick = () => { tview.stype = Number(b.dataset.stype); tview.sort = null; showTeam(tview.league, tview.id, 'stats'); });
+  app.querySelectorAll('[data-cat]').forEach(b => b.onclick = () => { tview.cat = b.dataset.cat; tview.sort = null; renderTeam(); });
+  app.querySelectorAll('[data-sort]').forEach(b => b.onclick = () => {
+    const k = b.dataset.sort;
+    if (tview.sort?.key === k) tview.sort.dir = tview.sort.dir === 'desc' ? 'asc' : 'desc';
+    else tview.sort = { key:k, dir:k === '_name' || LOWER_BETTER.test(k) ? 'asc' : 'desc' };
+    renderTeam();
+  });
+  app.querySelectorAll('[data-allcols]').forEach(c => c.onchange = () => { tview.allCols = c.checked; renderTeam(); });
+}
+// Team links inside game cards are spans (a link can't contain a link): handle them before the card's own link.
+function openTeamFrom(e){
+  const el = e.target.closest?.('[data-team]');
+  if (!el) return false;
+  e.preventDefault(); e.stopPropagation();
+  location.hash = '#/t/' + el.dataset.team;
+  return true;
+}
+document.addEventListener('click', openTeamFrom, true);
+document.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') openTeamFrom(e); }, true);
+
 /* ---------- Router ---------- */
 function currentRoute(){
-  const m = location.hash.match(/^#\/g\/(nba|nfl|mlb)\/(\d+)/);
-  return m ? { name:'game', league:m[1], id:m[2] } : { name:'home' };
+  let m = location.hash.match(/^#\/g\/(nba|nfl|mlb)\/(\d+)/);
+  if (m) return { name:'game', league:m[1], id:m[2] };
+  m = location.hash.match(/^#\/t\/(nba|nfl|mlb)\/(\d+)(?:\/(stats))?/);
+  if (m) return { name:'team', league:m[1], id:m[2], tab:m[3] || 'schedule' };
+  return { name:'home' };
 }
 function route(){
   clearTimeout(timer);
   const r = currentRoute();
   window.scrollTo(0, 0);
   if (r.name === 'game') showGame(r.league, r.id);
+  else if (r.name === 'team') { view.id = null; showTeam(r.league, r.id, r.tab); }
   else { view.id = null; showHome(); }
 }
 window.addEventListener('hashchange', route);
-$('#refresh').onclick = () => { const r = currentRoute(); clearTimeout(timer); r.name === 'game' ? showGame(r.league, r.id) : showHome(); };
+$('#refresh').onclick = () => {
+  const r = currentRoute(); clearTimeout(timer);
+  if (r.name === 'game') showGame(r.league, r.id);
+  else if (r.name === 'team') { tview.sched = null; tview.stats = null; showTeam(r.league, r.id, r.tab); }
+  else showHome();
+};
 document.addEventListener('visibilitychange', () => { if (!document.hidden) $('#refresh').click(); });
 route();
 </script>
