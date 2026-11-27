@@ -78,6 +78,32 @@ test('NHL: Bay Area TV, period labels and points sorting', async ({ page }) => {
   expect(r.order).toEqual(['d', 'c', 'a', 'b']);
 });
 
+test('NHL penalties: power play, matching penalties and a power-play goal', async ({ page }) => {
+  const r = await page.evaluate(() => {
+    const pen = (id, team, per, clock, min, kind = 'Minor') => ({ id, team: { id: team }, period: { number: per }, clock: { displayValue: clock }, type: { text: 'Tripping', penaltyMinutes: String(min), penaltyType: kind }, participants: [{ athlete: { displayName: 'P' + id } }], text: 'P' + id + ' Tripping' });
+    const goal = (id, team, per, clock) => ({ id, team: { id: team }, period: { number: per }, clock: { displayValue: clock }, type: { text: 'Goal' }, scoringPlay: true });
+    const g = (plays, period, left) => ({ league: 'nhl', state: 'in', s: { plays, header: { season: { type: 2 } } }, comp: { status: { period, displayClock: left } },
+      away: { team: { id: '18', abbreviation: 'SJ', displayName: 'San Jose Sharks' } }, home: { team: { id: '37', abbreviation: 'VGK', displayName: 'Vegas Golden Knights' } } });
+    view.s = { header: { season: { type: 2 } } };
+    // VGK minor at 5:00 of the 1st; at 6:00 elapsed (14:00 left) SJ has a 5-on-4 with 1:00 left
+    const a = nhlPowerPlay(g([pen(1, '37', 1, '5:00', 2)], 1, '14:00'));
+    // matching minors at the same moment: no power play, both in the box
+    const b = g([pen(1, '37', 1, '5:00', 2), pen(2, '18', 1, '5:00', 2)], 1, '14:30');
+    const bState = nhlPenaltyState(b);
+    // SJ scores on the power play at 5:40: the minor ends, so at 6:00 it's even strength
+    const c = nhlPowerPlay(g([pen(1, '37', 1, '5:00', 2), goal(9, '18', 1, '5:40')], 1, '14:00'));
+    // a major doesn't end on a goal
+    const d = nhlPowerPlay(g([pen(1, '37', 1, '5:00', 5, 'Major'), goal(9, '18', 1, '5:40')], 1, '14:00'));
+    view.s = null;
+    return { a: a && { pp: a.pp.abbr, strength: a.strength, left: Math.round(a.left * 60) }, b: nhlPowerPlay(b), inBox: bState.inBox.length, c, d: d && d.pp.abbr };
+  });
+  expect(r.a).toEqual({ pp: 'SJ', strength: '5-on-4', left: 60 });
+  expect(r.b).toBeNull();
+  expect(r.inBox).toBe(2);
+  expect(r.c).toBeNull();
+  expect(r.d).toBe('SJ');
+});
+
 // Guard check: an ESPN endpoint that doesn't allow web pages (the team-info endpoint that once
 // broke team pages) must be reported in these tests, the same way a phone's browser blocks it.
 const { test: plain, expect: plainExpect } = require('@playwright/test');
