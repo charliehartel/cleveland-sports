@@ -17,7 +17,7 @@ test.describe('San Jose Sharks (NHL)', () => {
     await expect(page).toHaveURL(/#\/g\/nhl\/\d+/);
     await ready(page, '.score-hero');
     // line score: three periods (plus OT/SO columns when needed) and a total
-    const heads = await page.locator('.line thead th').allTextContents();
+    const heads = await page.locator('.line').first().locator('thead th').allTextContents(); // the line score (the shots table follows it)
     expect(heads.slice(1, 4)).toEqual(['1', '2', '3']);
     expect(heads[heads.length - 1]).toBe('T');
     for (const h of heads.slice(4, -1)) expect(h).toMatch(/^(OT|SO|\dOT)$/);
@@ -25,8 +25,16 @@ test.describe('San Jose Sharks (NHL)', () => {
     await expect(page.locator('.tab')).toHaveText(['Box Score', 'Team Stats', 'Summary', 'Play-by-Play']);
     await expect(page.locator('.grp-title')).toHaveText(['Forwards', 'Defense', 'Goalies', 'Forwards', 'Defense', 'Goalies']);
     await expect(page.locator('.panel table').first().locator('thead th')).toHaveText(['Forwards', 'G', 'A', 'PTS', '+/-', 'S', 'HIT', 'BLK', 'PIM', 'FO%', 'TOI']);
+    // header: each team's division rank; shots by period under the line score, totals matching the box score
+    await expect(page.locator('.hteam').first()).toContainText(/\d+(st|nd|rd|th) in \w+/);
+    await expect(page.locator('.line').nth(1).locator('thead th').first()).toHaveText('Shots');
+    // lines worked out from faceoff lineups
+    await expect(page.locator('.panel .box h3', { hasText: 'Lines tonight' })).toBeVisible({ timeout: 60_000 });
+    await expect(page.locator('.panel .box', { has: page.locator('h3', { hasText: 'Lines tonight' }) }).locator('.tagx', { hasText: 'L1' })).toHaveCount(2);
     await page.locator('[data-tab="team"]').click();
     await expect(page.locator('.cmp').first()).toBeVisible();
+    await page.locator('[data-tab="summary"]').click();
+    await expect(page.locator('.panel .box h3').first()).toContainText('In-game insights');
     await page.locator('[data-tab="plays"]').click();
     await expect(page.locator('.pchips .chip').nth(1)).toHaveText('1st');
     expect(await page.locator('.plays li').count()).toBeGreaterThan(30);
@@ -81,6 +89,8 @@ test('hockey preview: goalies, out tonight, leaders with league ranks, streaks a
   // league ranks for the leaders, and the streak check finishes
   await expect(box('Season leaders').locator('.lrk').first()).toHaveText(/in NHL$/);
   await expect(box('Streaks')).not.toContainText('Checking recent games');
+  // career milestones: a list, or a clear "none" once career totals are in
+  await expect(box('Milestones within reach')).not.toContainText('Checking career totals', { timeout: 60_000 });
   // this game is marked in the season series
   await expect(box('Season series')).toContainText('This game');
 });

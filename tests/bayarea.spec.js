@@ -36,3 +36,13 @@ test('the bayarea/ shortcut forwards to the Bay Area view', async ({ page }) => 
   await ready(page, '.quick');
   await expect(page.locator('.qteam')).toHaveText([/Warriors/, /49ers/, /Sharks/]);
 });
+
+test('box score lists my team first, even when it is the home team', async ({ page }) => {
+  await page.goto('/?view=bayarea#/t/nhl/18');
+  await ready(page, '.srow');
+  if (!(await page.locator('.srow .wl').count())) await page.selectOption('[data-season]', { index: 1 });
+  // a finished home game ("vs"), where the Sharks would otherwise be listed second
+  await page.locator('.srow').filter({ has: page.locator('.wl') }).filter({ has: page.locator('.vs', { hasText: /^vs$/ }) }).first().click();
+  await ready(page, '.score-hero');
+  await expect(page.locator('.panel .box .teamhead').first()).toContainText('San Jose Sharks');
+});
