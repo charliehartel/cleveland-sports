@@ -222,6 +222,14 @@ table.stand tr.me td{background:color-mix(in srgb,var(--accent) 12%,var(--surfac
 table.stand tr.cut td{border-bottom:2px dashed var(--muted)}
 .seed{display:inline-block;width:18px;color:var(--faint);font-size:12px;text-align:right}
 sup.clinch{font-size:10px;color:var(--muted);font-weight:700}
+.quick{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:16px 0 4px}
+.qteam{display:flex;flex-direction:column;align-items:center;gap:4px;padding:12px 8px 10px;background:var(--surface);border:1px solid var(--border);border-top:4px solid var(--tc);border-radius:12px;box-shadow:var(--shadow);text-decoration:none;text-align:center}
+.qteam:hover{border-color:var(--faint);border-top-color:var(--tc)}
+.qteam img{width:44px;height:44px;object-fit:contain;transition:transform .12s}
+.qteam:hover img{transform:scale(1.08)}
+.qteam .qname{font-weight:700;font-size:14px}
+.qteam .qlg{font-size:11px;color:var(--faint);letter-spacing:.06em;font-weight:600}
+:root[data-theme="light"] .qteam picture source{display:none}
 .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}
 .tile{background:var(--surface-2);border-radius:10px;padding:10px 12px}
 .tile .tv{font-size:20px;font-weight:800;letter-spacing:-.01em}
@@ -243,9 +251,9 @@ sup.clinch{font-size:10px;color:var(--muted);font-weight:700}
 <script>
 /* ---------- Config: your teams ---------- */
 const TEAMS = [
-  { key:'cavs',      label:'Cavaliers', league:'nba', sport:'basketball', abbr:'cle', color:'var(--cavs)' },
-  { key:'browns',    label:'Browns',    league:'nfl', sport:'football',   abbr:'cle', color:'var(--browns)' },
-  { key:'guardians', label:'Guardians', league:'mlb', sport:'baseball',   abbr:'cle', color:'var(--guardians)' },
+  { key:'cavs',      label:'Cavaliers', league:'nba', sport:'basketball', abbr:'cle', id:'5', color:'var(--cavs)' },
+  { key:'browns',    label:'Browns',    league:'nfl', sport:'football',   abbr:'cle', id:'5', color:'var(--browns)' },
+  { key:'guardians', label:'Guardians', league:'mlb', sport:'baseball',   abbr:'cle', id:'5', color:'var(--guardians)' },
 ];
 const API = 'https://site.api.espn.com/apis/site/v2/sports';
 const SPORT = { nba:'basketball', nfl:'football', mlb:'baseball' };
@@ -472,7 +480,11 @@ function renderHome(){
   const b = buckets(homeState.games, filter);
   const chips = [{key:'all', label:'All teams'}, ...TEAMS].map(t =>
     `<button class="chip" data-filter="${t.key}" aria-pressed="${filter===t.key}">${t.color ? `<span class="sw" style="background:${t.color}"></span>` : ''}${esc(t.label)}</button>`).join('');
-  $('#app').innerHTML = `<div class="chips">${chips}</div>
+  const logoSrc = (t, dark) => `https://a.espncdn.com/i/teamlogos/${t.league}/${dark ? '500-dark' : '500'}/${t.abbr}.png`;
+  const quick = `<nav class="quick" aria-label="Team pages">${TEAMS.map(t => `<a class="qteam" style="--tc:${t.color}" href="#/t/${t.league}/${t.id}">
+      <picture><source media="(prefers-color-scheme: dark)" srcset="${logoSrc(t, true)}"><img src="${logoSrc(t, false)}" alt="" width="44" height="44"></picture>
+      <span class="qname">${esc(t.label)}</span><span class="qlg">${t.league.toUpperCase()}</span></a>`).join('')}</nav>`;
+  $('#app').innerHTML = `${quick}<div class="chips">${chips}</div>
     ${homeState.errors.length === TEAMS.length
       ? `<div class="err">Can't reach ESPN for scores. If you're offline, this will retry by itself. If you opened this file in a preview window (Files, Mail or a chat app), those usually block internet access, so open it in a web browser instead.</div>`
       : homeState.errors.map(e => `<div class="err">${esc(e)}. Retrying automatically.</div>`).join('')}
