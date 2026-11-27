@@ -1094,7 +1094,7 @@ async function showTeam(league, id, tab){
   if (!tview.info) $('#app').innerHTML = `<a class="back" href="#/">← All games</a><div class="loading">Loading team…</div>`;
   const base = `${API}/${SPORT[league]}/${league}/teams/${id}`;
   try {
-    if (!tview.info) tview.info = (await getJSON(base)).team;
+    if (!tview.info) tview.info = (await getJSON(`${base}/schedule?seasontype=2`)).team;
     if (tview.tab === 'schedule') await loadTeamSchedule(base);
     else await loadTeamStats(base);
     const r = currentRoute();
@@ -1140,7 +1140,19 @@ async function loadTeamStats(base){
   const want = tview.statSeason;
   const get = async (y) => {
     const q = `?seasontype=${tview.stype}` + (y ? `&season=${y}` : '');
-    const [st, pl] = await Promise.all([getJSON(`${base}/statistics${q}`), getJSON(`${base}/athletes/statistics${q}`)]);
+    const [st, pl, sc] = await Promise.all([getJSON(`${base}/statistics${q}`), getJSON(`${base}/athletes/statistics${q}`),
+      tview.league === 'nba' ? getJSON(`${base}/schedule${q}`).catch(() => null) : null]);
+    let pf = 0, pa = 0, n = 0;
+    for (const e of sc?.events || []) {
+      const c = e.competitions?.[0];
+      if (!c?.status?.type?.completed) continue;
+      const me = (c.competitors || []).find(x => String(x.team?.id) === String(tview.id));
+      const op = (c.competitors || []).find(x => x !== me);
+      const a = num(scoreOf(me?.score)), b = num(scoreOf(op?.score));
+      if (a == null || b == null) continue;
+      pf += a; pa += b; n++;
+    }
+    st.pointsPerGame = n ? { pf:pf / n, pa:pa / n } : null;
     const hasPlayers = (pl.results || []).some(c => (c.leaders || []).length);
     return { st, pl, hasPlayers, year:pl.requestedSeason?.year || st.requestedSeason?.year || y };
   };
@@ -1161,7 +1173,7 @@ async function loadTeamStats(base){
 
 function renderTeam(){
   const t = tview.info, league = tview.league;
-  const rec = t.record?.items?.[0]?.summary || '';
+  const rec = t.recordSummary || '';
   const color = hexColor(t.color) || 'var(--accent)';
   document.title = `${t.displayName} · Cleveland Sports`;
   const body = tview.tab === 'schedule' ? renderTeamSchedule() : renderTeamStatsPage();
@@ -1224,8 +1236,7 @@ function statIndex(cats){
 function teamTiles(){
   const r = tview.stats?.results || {};
   const S = statIndex(r.stats?.categories), O = statIndex(r.opponent);
-  const recItems = tview.info.record?.items?.[0]?.stats || [];
-  const rec = n => recItems.find(s => s.name === n)?.value;
+  const pp = tview.stats?.pointsPerGame;
   const v = (ix, c, n) => ix[c]?.[n]?.value;
   const d = (ix, c, n) => ix[c]?.[n]?.displayValue;
   const fix = (x, n=1) => x == null || !isFinite(x) ? null : x.toFixed(n);
@@ -1235,8 +1246,8 @@ function teamTiles(){
     const o = S.offensive || {};
     const tot = n => o[n]?.value;
     const poss = tot('fieldGoalsAttempted') + 0.44 * tot('freeThrowsAttempted') - tot('offensiveRebounds') + tot('turnovers');
-    if (tview.statSeason === tview.statCurrent) { add('Points / game', fix(rec('avgPointsFor'))); add('Allowed / game', fix(rec('avgPointsAgainst'))); add('Point diff / game', fix(rec('differential'))); }
-    else add('Points / game', d(S, 'offensive', 'avgPoints'));
+    add('Points / game', d(S, 'offensive', 'avgPoints'));
+    if (pp) { add('Allowed / game', fix(pp.pa)); add('Point diff / game', (pp.pf - pp.pa >= 0 ? '+' : '') + fix(pp.pf - pp.pa)); }
     add('Offensive rating', fix(100 * tot('points') / poss), 'Points per 100 possessions (estimated from season totals)');
     add('True shooting %', fix(100 * tot('points') / (2 * (tot('fieldGoalsAttempted') + 0.44 * tot('freeThrowsAttempted')))));
     add('eFG%', fix(100 * (tot('fieldGoalsMade') + 0.5 * tot('threePointFieldGoalsMade')) / tot('fieldGoalsAttempted')));
