@@ -16,6 +16,7 @@
   --bg:#f6f5f2;--surface:#ffffff;--surface-2:#f0eee9;--border:#e2dfd8;--text:#1b1a18;--muted:#6b675f;--faint:#9a958b;
   --accent:#e4572e;--live:#d7263d;--good:#1f8a4c;--warn:#b45309;--focus:#2563eb;
   --cavs:#860038;--browns:#ff3c00;--guardians:#00385d;
+  --warriors:#1d428a;--niners:#aa0000;--sharks:#006d75;
   --shadow:0 1px 2px rgba(0,0,0,.05),0 2px 8px rgba(0,0,0,.04);
   --field:#2f7d3a;--field-line:rgba(255,255,255,.55);--zone:#1b1a18;
 }
@@ -23,12 +24,14 @@
   --bg:#121212;--surface:#1c1c1e;--surface-2:#26262a;--border:#333338;--text:#f1efe9;--muted:#a7a39a;--faint:#77746d;
   --accent:#ff7a50;--live:#ff4d61;--good:#4cc27e;--warn:#f5a524;--focus:#7aa2ff;
   --cavs:#c23a6e;--browns:#ff6a33;--guardians:#4d8fc4;
+  --warriors:#5b8ee6;--niners:#e0484d;--sharks:#2bb3bd;
   --shadow:none;--field:#24612d;--zone:#f1efe9;
 }}
 :root[data-theme="dark"]{
   --bg:#121212;--surface:#1c1c1e;--surface-2:#26262a;--border:#333338;--text:#f1efe9;--muted:#a7a39a;--faint:#77746d;
   --accent:#ff7a50;--live:#ff4d61;--good:#4cc27e;--warn:#f5a524;--focus:#7aa2ff;
   --cavs:#c23a6e;--browns:#ff6a33;--guardians:#4d8fc4;
+  --warriors:#5b8ee6;--niners:#e0484d;--sharks:#2bb3bd;
   --shadow:none;--field:#24612d;--zone:#f1efe9;
 }
 *{box-sizing:border-box}
@@ -278,11 +281,29 @@ details.acc .tablewrap{max-width:620px}
 
 <script>
 /* ---------- Config: your teams ---------- */
-const TEAMS = [
-  { key:'cavs',      label:'Cavaliers', league:'nba', sport:'basketball', abbr:'cle', id:'5', color:'var(--cavs)' },
-  { key:'browns',    label:'Browns',    league:'nfl', sport:'football',   abbr:'cle', id:'5', color:'var(--browns)' },
-  { key:'guardians', label:'Guardians', league:'mlb', sport:'baseball',   abbr:'cle', id:'5', color:'var(--guardians)' },
-];
+// Each view is a set of teams. Cleveland is the default; open ?view=bayarea (or the bayarea/ folder) for the other one.
+// news:true shows the news feed, which scripts/news.mjs collects for the Cleveland teams only.
+const VIEWS = {
+  cleveland: { name:'Cleveland Sports', short:'CLE Sports', local:'Cleveland-area', icon:'icon-180.png', news:true, teams:[
+    { key:'cavs',      label:'Cavaliers', league:'nba', sport:'basketball', abbr:'cle', id:'5', color:'var(--cavs)' },
+    { key:'browns',    label:'Browns',    league:'nfl', sport:'football',   abbr:'cle', id:'5', color:'var(--browns)' },
+    { key:'guardians', label:'Guardians', league:'mlb', sport:'baseball',   abbr:'cle', id:'5', color:'var(--guardians)' },
+  ]},
+  bayarea: { name:'Bay Area Sports', short:'Bay Sports', local:'Bay Area', icon:'icon-bayarea-180.png', teams:[
+    { key:'warriors',  label:'Warriors',  league:'nba', sport:'basketball', abbr:'gs',  id:'9',  color:'var(--warriors)' },
+    { key:'niners',    label:'49ers',     league:'nfl', sport:'football',   abbr:'sf',  id:'25', color:'var(--niners)' },
+    { key:'sharks',    label:'Sharks',    league:'nhl', sport:'hockey',     abbr:'sj',  id:'18', color:'var(--sharks)' },
+  ]},
+};
+const VIEW_KEY = Object.hasOwn(VIEWS, new URLSearchParams(location.search).get('view')) ? new URLSearchParams(location.search).get('view') : 'cleveland';
+const VIEW = VIEWS[VIEW_KEY];
+const TEAMS = VIEW.teams;
+// The page's title, header and home-screen name/icon follow the view.
+document.title = VIEW.name;
+document.querySelector('.brand').lastChild.textContent = VIEW.name;
+document.querySelector('.brand .dot').style.background = `linear-gradient(135deg,${TEAMS.map(t => t.color).join(',')})`;
+document.querySelector('meta[name="apple-mobile-web-app-title"]').content = VIEW.short;
+document.querySelectorAll('link[rel="apple-touch-icon"],link[rel="icon"]').forEach(l => l.href = VIEW.icon);
 const API = 'https://site.api.espn.com/apis/site/v2/sports';
 const SPORT = { nba:'basketball', nfl:'football', mlb:'baseball', nhl:'hockey' };
 const H = 3600e3;
@@ -405,7 +426,7 @@ function bayArea(league, date, bcs, home, away){
   if (opts.length) return opts.sort((a, b) => b.lvl - a.lvl)[0];
   if (!bcs.some(b => !isPackage(league, b.name))) return null; // TV not announced yet
   return { lvl:0, label:'Not on Bay Area TV', sub:BAY.outOfMarket[league],
-    why:`Only on ${teamOf(league) ? 'Cleveland-area' : 'the teams\' local'} channels. Out of market, you can stream it on ${BAY.outOfMarket[league]}.` };
+    why:`Only on ${teamOf(league) ? VIEW.local : 'the teams\' local'} channels. Out of market, you can stream it on ${BAY.outOfMarket[league]}.` };
 }
 // For a regional NFL game: if the 49ers are on the same network at the same time, Bay Area TV shows the 49ers.
 const sfCache = {};
@@ -460,8 +481,9 @@ async function loadTeam(t){
 }
 
 let homeState = { games:[], errors:[] };
+const FILTER_KEY = VIEW_KEY === 'cleveland' ? 'teamFilter' : `teamFilter:${VIEW_KEY}`; // each view remembers its own team filter
 async function showHome(){
-  document.title = 'Cleveland Sports';
+  document.title = VIEW.name;
   if (!homeState.games.length) $('#app').innerHTML = '<div class="loading">Loading your teams…</div>';
   const res = await Promise.allSettled(TEAMS.map(loadTeam));
   if (currentRoute().name !== 'home') return;
@@ -507,7 +529,8 @@ function section(title, list, emptyMsg){
     (list.length ? `<div class="grid">${list.map(card).join('')}</div>` : `<div class="empty">${esc(emptyMsg)}</div>`);
 }
 function renderHome(){
-  const filter = store.get('teamFilter', 'all');
+  const saved = store.get(FILTER_KEY, 'all');
+  const filter = TEAMS.some(t => t.key === saved) ? saved : 'all';
   const b = buckets(homeState.games, filter);
   const chips = [{key:'all', label:'All teams'}, ...TEAMS].map(t =>
     `<button class="chip" data-filter="${t.key}" aria-pressed="${filter===t.key}">${t.color ? `<span class="sw" style="background:${t.color}"></span>` : ''}${esc(t.label)}</button>`).join('');
@@ -524,10 +547,10 @@ function renderHome(){
       ? `<h2 class="sec">Today</h2><div class="empty slim">No games today or in the last 36 hours.</div>`
       : section('Today', b.today, 'No games today.') + section('Last 36 hours', b.recent, 'No games finished in the last 36 hours.')}
     ${section('Next 7 days', b.upcoming, 'Nothing scheduled in the next 7 days.')}
-    <div id="home-news">${newsBlock({ team:filter === 'all' ? null : filter, limit:homeNewsLimit, home:true })}</div>`;
-  if (!newsState.loading && (!newsState.data || Date.now() - newsState.fetchedAt > 5*60e3)) loadNews().then(() => { if (currentRoute().name === 'home') { const el = $('#home-news'); if (el) { el.innerHTML = newsBlock({ team:store.get('teamFilter', 'all') === 'all' ? null : store.get('teamFilter', 'all'), limit:homeNewsLimit, home:true }); wireNews(); } } });
+    ${VIEW.news ? `<div id="home-news">${newsBlock({ team:filter === 'all' ? null : filter, limit:homeNewsLimit, home:true })}</div>` : ''}`;
+  if (VIEW.news && !newsState.loading && (!newsState.data || Date.now() - newsState.fetchedAt > 5*60e3)) loadNews().then(() => { if (currentRoute().name === 'home') { const el = $('#home-news'); if (el) { const f = store.get(FILTER_KEY, 'all'); el.innerHTML = newsBlock({ team:f === 'all' ? null : f, limit:homeNewsLimit, home:true }); wireNews(); } } });
   wireNews();
-  $('#app').querySelectorAll('[data-filter]').forEach(el => el.onclick = () => { store.set('teamFilter', el.dataset.filter); renderHome(); });
+  $('#app').querySelectorAll('[data-filter]').forEach(el => el.onclick = () => { store.set(FILTER_KEY, el.dataset.filter); renderHome(); });
 }
 
 /* ---------- Game view ---------- */
@@ -630,7 +653,7 @@ function renderGame(){
   const g = gameCtx();
   const tabs = tabList(g);
   if (!tabs.some(t => t.key === view.tab)) view.tab = tabs[0].key;
-  document.title = `${g.away?.team?.abbreviation} ${g.away?.score ?? ''} – ${g.home?.team?.abbreviation} ${g.home?.score ?? ''} · Cleveland Sports`;
+  document.title = `${g.away?.team?.abbreviation} ${g.away?.score ?? ''} – ${g.home?.team?.abbreviation} ${g.home?.score ?? ''} · ${VIEW.name}`;
   const panel = tabs.find(t => t.key === view.tab).render(g);
   $('#app').innerHTML = `<a class="back" href="#/">← All games</a>
     ${hero(g)}
@@ -1403,7 +1426,7 @@ function renderTeam(){
   const t = tview.info, league = tview.league;
   const rec = t.recordSummary || '';
   const color = hexColor(t.color) || 'var(--accent)';
-  document.title = `${t.displayName} · Cleveland Sports`;
+  document.title = `${t.displayName} · ${VIEW.name}`;
   const body = tview.tab === 'schedule' ? renderTeamSchedule() : tview.tab === 'standings' ? renderStandings()
     : tview.tab === 'news' ? newsBlock({ team:myTeamKey(), limit:200 }) : renderTeamStatsPage();
   $('#app').innerHTML = `<a class="back" href="#/">← All games</a>
@@ -1959,7 +1982,7 @@ function renderStandings(){
 const NEWS_URL = 'https://raw.githubusercontent.com/charliehartel/cleveland-sports/news-data/news.json';
 const newsState = { data:null, loading:false, error:null, missing:false, source:'all', fetchedAt:0 };
 let homeNewsLimit = 8;
-function myTeamKey(){ return TEAMS.find(t => t.league === tview.league && String(t.id) === String(tview.id))?.key || null; }
+function myTeamKey(){ return VIEW.news && TEAMS.find(t => t.league === tview.league && String(t.id) === String(tview.id))?.key || null; } // News covers only views with a feed
 async function loadNews(){
   if (newsState.data && Date.now() - newsState.fetchedAt < 5*60e3) return;
   newsState.loading = true;
