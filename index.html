@@ -2599,8 +2599,9 @@ const NHL_LOWER = new Set(['gaa', 'sapg', 'pim']);
 async function nhlLeague(season, stype){
   const key = `${season}-${stype}`;
   nhlLeagueCache[key] ||= (async () => {
-    const list = await getJSON(`${API}/hockey/nhl/teams`);
-    const ids = (list.sports?.[0]?.leagues?.[0]?.teams || []).map(t => String(t.team?.id)).filter(Boolean);
+    // team ids from the standings (ESPN's /teams list doesn't allow web pages to read it)
+    const stand = await getJSON(`https://site.api.espn.com/apis/v2/sports/hockey/nhl/standings?season=${season}`);
+    const ids = [...new Set((stand.children || []).flatMap(c => [...(c.standings?.entries || []), ...(c.children || []).flatMap(d => d.standings?.entries || [])]).map(e => String(e.team?.id)).filter(Boolean))];
     const teams = {};
     await Promise.all(ids.map(async id => {
       try {
