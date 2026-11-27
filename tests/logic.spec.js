@@ -52,6 +52,32 @@ test('NBA rating formulas', async ({ page }) => {
   expect(m.efg).toBeCloseTo(55.3, 1);
 });
 
+test('NHL: Bay Area TV, period labels and points sorting', async ({ page }) => {
+  const r = await page.evaluate(() => {
+    const sj = { abbr: 'SJ', short: 'Sharks' };
+    view.s = { header: { season: { type: 2 } } };
+    const reg = [1, 3, 4, 5].map(nhlPerLabel);
+    view.s = { header: { season: { type: 3 } } };
+    const playoffs = [4, 5, 6].map(nhlPerLabel);
+    view.s = null;
+    const row = (id, w, l, otl, rw) => ({ team: { id }, stats: [['wins', w], ['losses', l], ['otLosses', otl], ['points', 2 * w + otl], ['gamesPlayed', w + l + otl], ['regWins', rw]].map(([name, value]) => ({ name, value })) });
+    return {
+      sharksHome: bayArea('nhl', new Date(), [{ name: 'ESPN+', market: 'national' }, { name: 'NBC Sports BA', market: 'home' }], sj, { abbr: 'VGK' })?.label,
+      espnPlusOnly: bayArea('nhl', new Date(), [{ name: 'ESPN+', market: 'national' }, { name: 'NESN', market: 'home' }], { abbr: 'BOS', short: 'Bruins' }, { abbr: 'TOR' }),
+      tnt: bayArea('nhl', new Date(), [{ name: 'TNT', market: 'national' }], { abbr: 'BOS' }, { abbr: 'TOR' })?.label,
+      reg, playoffs,
+      // equal points: fewer games played ranks first, then more regulation wins
+      order: standRows([row('a', 10, 8, 2, 9), row('b', 11, 9, 0, 8), row('c', 10, 6, 2, 7), row('d', 10, 6, 2, 9)]).sort(byRecord).map(x => x.id),
+    };
+  });
+  expect(r.sharksHome).toBe('NBC Sports Bay Area');
+  expect(r.espnPlusOnly).toMatchObject({ lvl: 0, label: 'Not on Bay Area TV', sub: 'ESPN+' });
+  expect(r.tnt).toBe('TNT');
+  expect(r.reg).toEqual(['1', '3', 'OT', 'SO']);
+  expect(r.playoffs).toEqual(['OT', '2OT', '3OT']);
+  expect(r.order).toEqual(['d', 'c', 'a', 'b']);
+});
+
 // Guard check: an ESPN endpoint that doesn't allow web pages (the team-info endpoint that once
 // broke team pages) must be reported in these tests, the same way a phone's browser blocks it.
 const { test: plain, expect: plainExpect } = require('@playwright/test');
