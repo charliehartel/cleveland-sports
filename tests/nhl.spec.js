@@ -48,7 +48,7 @@ test.describe('San Jose Sharks (NHL)', () => {
     await page.locator('[data-tab="team"]').click();
     await expect(page.locator('.cmp').first()).toBeVisible();
     await page.locator('[data-tab="summary"]').click();
-    await expect(page.locator('.panel .box h3').first()).toContainText('In-game insights');
+    await expect(page.locator('.panel .box h3', { hasText: 'In-game insights' })).toBeVisible(); // after the three stars, when posted
     // penalties are labeled as penalties and listed in the summary when there were any
     if (await page.locator('.panel .box h3', { hasText: /^Penalties/ }).count()) await expect(page.locator('.panel .penl').first()).toHaveText(/\d+ min/);
     await page.locator('[data-tab="plays"]').click();
