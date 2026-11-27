@@ -230,11 +230,18 @@ sup.clinch{font-size:10px;color:var(--muted);font-weight:700}
 .qteam .qname{font-weight:700;font-size:14px}
 .qteam .qlg{font-size:11px;color:var(--faint);letter-spacing:.06em;font-weight:600}
 :root[data-theme="light"] .qteam picture source{display:none}
-.newslist{display:grid;gap:10px}
-.news{display:grid;grid-template-columns:96px 1fr;gap:12px;align-items:start;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px;text-decoration:none;box-shadow:var(--shadow)}
+.newslist{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-top:12px}
+.news{display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;text-decoration:none;box-shadow:var(--shadow)}
 .news:hover{border-color:var(--faint)}
-.nthumb{width:96px;height:64px;object-fit:cover;border-radius:8px;background:var(--surface-2);display:block}
-.nbody{min-width:0}
+.nthumb{width:100%;aspect-ratio:16/9;object-fit:cover;background:var(--surface-2);display:block;border-bottom:3px solid var(--tc)}
+.nthumb.ph{display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--tc) 22%,var(--surface-2));color:var(--muted);font-weight:800;font-size:18px}
+.nbody{min-width:0;padding:10px 12px 12px}
+.latest{margin-top:4px}
+.lrow{display:grid;grid-template-columns:40px 1fr;gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--border);text-decoration:none}
+.lrow:first-of-type{border-top:none}
+.lrow:hover .ltitle{text-decoration:underline;text-underline-offset:3px}
+.llogo{width:40px;height:40px;object-fit:contain}
+.ltitle{font-weight:700;line-height:1.3}
 .nmeta{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center;font-size:12px;color:var(--faint);margin-bottom:3px}
 .nsrc{font-weight:700;color:var(--text)}
 .nteam{font-weight:600;color:var(--tc)}
@@ -242,7 +249,7 @@ sup.clinch{font-size:10px;color:var(--muted);font-weight:700}
 .ntitle{font-weight:700;line-height:1.3}
 .nsum{font-size:13px;color:var(--muted);margin-top:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .more{margin-top:10px;width:100%;padding:8px}
-@media (max-width:520px){.news{grid-template-columns:72px 1fr}.nthumb{width:72px;height:54px}}
+
 .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}
 .tile{background:var(--surface-2);border-radius:10px;padding:10px 12px}
 .tile .tv{font-size:20px;font-weight:800;letter-spacing:-.01em}
@@ -1834,8 +1841,8 @@ function timeAgo(iso){
 const TEAM_LABEL = Object.fromEntries(TEAMS.map(t => [t.key, t.label]));
 function newsItem(i, showTeam){
   const team = TEAMS.find(t => t.key === i.team);
-  return `<a class="news" href="${esc(safeUrl(i.url))}" target="_blank" rel="noopener">
-    ${safeUrl(i.image) ? `<img class="nthumb" src="${esc(safeUrl(i.image))}" alt="" loading="lazy">` : '<span class="nthumb ph"></span>'}
+  return `<a class="news" href="${esc(safeUrl(i.url))}" target="_blank" rel="noopener" style="--tc:${team?.color || 'var(--accent)'}">
+    ${safeUrl(i.image) ? `<img class="nthumb" src="${esc(safeUrl(i.image))}" alt="" loading="lazy">` : `<span class="nthumb ph"><span>${esc(i.sourceName)}</span></span>`}
     <div class="nbody">
       <div class="nmeta"><span class="nsrc src-${esc(i.source)}">${esc(i.sourceName)}</span>${showTeam && team ? `<span class="nteam" style="--tc:${team.color}">${esc(team.label)}</span>` : ''}<span>${esc(timeAgo(i.published))}</span>${i.paywall ? '<span class="npay">Subscriber</span>' : ''}</div>
       <div class="ntitle">${esc(i.title)}</div>
@@ -1854,13 +1861,26 @@ function newsBlock({ team, limit, home }){
   const srcs = [...new Map(items.map(i => [i.source, i.sourceName])).entries()];
   if (!srcs.some(([id]) => id === newsState.source)) newsState.source = 'all';
   if (newsState.source !== 'all') items = items.filter(i => i.source === newsState.source);
+  // Home with no filters: lead with each team's newest story, then the mixed feed without those.
+  let latest = '';
+  if (home && !team && newsState.source === 'all') {
+    const tops = TEAMS.map(t => ({ t, i:items.filter(x => x.team === t.key).sort((a, b) => b.published.localeCompare(a.published))[0] })).filter(x => x.i);
+    if (tops.length) {
+      latest = `<div class="box latest"><h3>Latest from each team</h3>${tops.map(({ t, i }) => `<a class="lrow" style="--tc:${t.color}" href="${esc(safeUrl(i.url))}" target="_blank" rel="noopener">
+          <img class="llogo" src="https://a.espncdn.com/i/teamlogos/${t.league}/500/${t.abbr}.png" alt="">
+          <div class="lbody"><div class="nmeta"><span class="nteam">${esc(t.label)}</span><span class="nsrc">${esc(i.sourceName)}</span><span>${esc(timeAgo(i.published))}</span>${i.paywall ? '<span class="npay">Subscriber</span>' : ''}</div>
+          <div class="ltitle">${esc(i.title)}</div></div></a>`).join('')}</div>`;
+      const used = new Set(tops.map(x => x.i.url));
+      items = items.filter(x => !used.has(x.url));
+    }
+  }
   items = diversify(items);
   const shown = items.slice(0, limit);
   const chips = srcs.length > 1 ? `<div class="pchips">${[['all', 'All sources'], ...srcs].map(([id, name]) =>
     `<button class="chip" data-nsrc="${esc(id)}" aria-pressed="${newsState.source === id}">${esc(name)}</button>`).join('')}</div>` : '';
   const failed = (newsState.data.sources || []).filter(x => !x.ok && (!team || x.team === team));
   const okNames = [...new Set((newsState.data.sources || []).filter(x => x.ok && x.count && (!team || x.team === team)).map(x => x.name))];
-  return head + chips + (shown.length ? `<div class="newslist">${shown.map(i => newsItem(i, !team)).join('')}</div>` : `<div class="empty">No recent stories${newsState.source !== 'all' ? ' from this source' : ''}.</div>`)
+  return head + chips + latest + (shown.length ? `<div class="newslist">${shown.map(i => newsItem(i, !team)).join('')}</div>` : `<div class="empty">No recent stories${newsState.source !== 'all' ? ' from this source' : ''}.</div>`)
     + (items.length > shown.length && home ? `<button class="iconbtn more" data-nmore>Show more news</button>` : '')
     + `<div class="note">From ${esc(okNames.join(', ') || 'no sources yet')}.${failed.length ? ` Not reachable right now: ${esc([...new Set(failed.map(x => x.name))].join(', '))}.` : ''}</div>`;
 }

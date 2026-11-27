@@ -28,16 +28,22 @@ test('home shows a mixed "Latest news" section that can expand', async ({ page }
   await page.goto('/#/');
   await ready(page, '.newslist');
   await expect(page.locator('#home-news h2')).toContainText('Latest news');
+  // first: each team's newest story
+  await expect(page.locator('.latest .lrow .nteam')).toHaveText(['Cavaliers', 'Browns', 'Guardians']);
+  await expect(page.locator('.latest .ltitle')).toHaveText(['ESPN Cavs story 0', 'ESPN Browns story 0', 'Fox 8 Guardians story']);
+  // then the feed of cards, without those three
   await expect(page.locator('.newslist .news')).toHaveCount(8);
+  for (const t of await page.locator('.newslist .ntitle').allTextContents()) expect(['ESPN Cavs story 0', 'ESPN Browns story 0', 'Fox 8 Guardians story']).not.toContain(t);
   // no three in a row from the same outlet while others are available
   const srcs = await page.locator('.newslist .nsrc').allTextContents();
   for (let i = 2; i < 6; i++) expect(srcs[i] === srcs[i - 1] && srcs[i] === srcs[i - 2]).toBe(false);
   await expect(page.locator('.npay').first()).toHaveText('Subscriber');
   await expect(page.locator('#home-news .note')).toContainText('Not reachable right now: WKYC 3');
   await page.locator('[data-nmore]').click();
-  await expect(page.locator('.newslist .news')).toHaveCount(14);
-  // source filter
+  await expect(page.locator('.newslist .news')).toHaveCount(11);
+  // source filter: just that outlet's cards, no team card
   await page.locator('[data-nsrc="athletic"]').click();
+  await expect(page.locator('.latest')).toHaveCount(0);
   await expect(page.locator('.newslist .news')).toHaveCount(1);
   await expect(page.locator('.newslist .ntitle')).toHaveText(['Athletic Browns story']);
 });
@@ -47,6 +53,8 @@ test('team filter chip narrows home news to that team', async ({ page }) => {
   await page.goto('/#/');
   await ready(page, '.newslist');
   await page.locator('[data-filter="cavs"]').click();
+  await expect(page.locator('.latest')).toHaveCount(0);
+  await expect(page.locator('.newslist .news')).toHaveCount(5);
   for (const t of await page.locator('.newslist .ntitle').allTextContents()) expect(t).toContain('Cavs');
   await page.locator('[data-filter="all"]').click();
 });
