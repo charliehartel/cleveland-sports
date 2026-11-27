@@ -51,3 +51,18 @@ test('NBA rating formulas', async ({ page }) => {
   expect(m.ts).toBeCloseTo(58.8, 1);
   expect(m.efg).toBeCloseTo(55.3, 1);
 });
+
+// Guard check: an ESPN endpoint that doesn't allow web pages (the team-info endpoint that once
+// broke team pages) must be reported in these tests, the same way a phone's browser blocks it.
+const { test: plain, expect: plainExpect } = require('@playwright/test');
+const { relay } = require('./helpers');
+plain('ESPN endpoints without browser access are reported, as a phone would block them', async ({ page }) => {
+  const problems = [];
+  await relay(page, problems);
+  await page.goto('/#/');
+  await page.evaluate(async () => {
+    await fetch('https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/5/schedule?seasontype=2'); // allowed
+    await fetch('https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/5').catch(() => {});      // not allowed
+  });
+  plainExpect(problems).toEqual([expect.stringContaining('/basketball/nba/teams/5 (no Access-Control-Allow-Origin header)')]);
+});

@@ -12,9 +12,9 @@ const DAYS = 14;              // keep two weeks of news
 const PER_TEAM = 80;          // newest items kept per team
 
 export const TEAMS = {
-  cavs:      { league: 'nba', sport: 'basketball', espnId: '5', words: ['cavaliers', 'cavs'] },
-  browns:    { league: 'nfl', sport: 'football',   espnId: '5', words: ['browns'] },
-  guardians: { league: 'mlb', sport: 'baseball',   espnId: '5', words: ['guardians'] },
+  cavs:      { league: 'nba', sport: 'basketball', espnId: '5', words: ['cavaliers', 'cavs'], paths: ['cavs', 'cavaliers'] },
+  browns:    { league: 'nfl', sport: 'football',   espnId: '5', words: ['browns'], paths: ['browns'] },
+  guardians: { league: 'mlb', sport: 'baseball',   espnId: '5', words: ['guardians'], paths: ['guardians', 'cleveland-guardians'] },
 };
 
 // Each RSS source lists candidate feed addresses per team; the first one that returns items is used.
@@ -30,7 +30,8 @@ export const RSS_SOURCES = [
     },
   },
   {
-    id: 'athletic', name: 'The Athletic', domains: ['nytimes.com', 'theathletic.com'], paywall: true,
+    // Team feeds mix in league-wide pieces (power rankings, picks); those are dropped, the rest kept.
+    id: 'athletic', name: 'The Athletic', domains: ['nytimes.com', 'theathletic.com'], paywall: true, scope: 'team-feed',
     feeds: {
       browns:    ['https://www.nytimes.com/athletic/rss/nfl/browns/', 'https://theathletic.com/rss/nfl/browns/'],
       cavs:      ['https://www.nytimes.com/athletic/rss/nba/cavaliers/', 'https://theathletic.com/rss/nba/cavaliers/'],
@@ -38,11 +39,12 @@ export const RSS_SOURCES = [
     },
   },
   {
-    id: 'team', name: 'Team site', domains: ['clevelandbrowns.com', 'nba.com', 'mlb.com'],
-    names: { browns: 'ClevelandBrowns.com', cavs: 'Cavs.com', guardians: 'MLB.com' },
+    // Official team news: everything is about the team, so only promos are dropped.
+    id: 'team', name: 'Team site', domains: ['clevelandbrowns.com', 'mlb.com'], scope: 'official',
+    names: { browns: 'ClevelandBrowns.com', guardians: 'MLB.com' },
+    // NBA.com (Cavs) refuses these requests (HTTP 403), so there's no Cavs team-site feed.
     feeds: {
       browns:    ['https://www.clevelandbrowns.com/rss/news', 'https://www.clevelandbrowns.com/news/rss'],
-      cavs:      ['https://www.nba.com/cavaliers/rss.xml', 'https://www.nba.com/cavaliers/news/rss.xml'],
       guardians: ['https://www.mlb.com/guardians/feeds/news/rss.xml'],
     },
   },
@@ -119,6 +121,20 @@ async function get(url, type = 'text') {
 const host = u => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return ''; } };
 const onDomain = (u, domains) => domains.some(d => host(u) === d || host(u).endsWith('.' + d));
 export const mentions = (text, words) => words.some(w => new RegExp(`\\b${w}\\b`, 'i').test(text));
+// Filler that isn't news: betting and picks, fantasy, podcasts, promotions.
+const JUNK = /\b(best bets?|betting (odds|lines|picks|preview|trends)|odds and picks|player props|straight-up picks|picks against the spread|spread picks|fantasy|podcast|sweepstakes|giveaway|sign up|text alerts|win tickets|presented by|promo code|ticket deals?)\b/i;
+// League-wide formats that show up in team feeds.
+const LEAGUEWIDE = /\b(power rankings?|mock draft|picks|hall of fame ballot|all (30|32) teams|every team|tiers?)\b/i;
+// A story counts for a team if the team is named in the headline or summary, or it's in that team's section of the site.
+export function relevant(i, teamKey, scope = 'general') {
+  const t = TEAMS[teamKey];
+  if (JUNK.test(i.title) || /podcast/i.test(i.url)) return false;
+  if (scope === 'official') return true;
+  if (scope === 'team-feed') return !LEAGUEWIDE.test(i.title);
+  let path = '';
+  try { path = new URL(i.url).pathname.toLowerCase(); } catch {}
+  return mentions(`${i.title} ${i.summary}`, t.words) || t.paths.some(p => path.split('/').includes(p));
+}
 const normUrl = u => { try { const x = new URL(u); x.search = ''; x.hash = ''; return x.toString().replace(/\/$/, ''); } catch { return u; } };
 const normTitle = t => t.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 const httpsOnly = u => (typeof u === 'string' && /^https?:\/\//.test(u)) ? u.replace(/^http:/, 'https:') : '';
@@ -131,7 +147,7 @@ export function espnKeep(a, team) {
   if (!tagged) return false;
   if (a.type === 'Media') return false; // video clips
   const url = a.links?.web?.href || '';
-  if (/\/(betting|fantasy|espn-bet)\//.test(url) || /\b(betting|odds|fantasy|picks)\b/i.test(a.headline || '')) return false;
+  if (/\/(betting|fantasy|espn-bet)\//.test(url) || JUNK.test(a.headline || '')) return false;
   return teams.length <= 2 || mentions(`${a.headline} ${a.description || ''}`, team.words);
 }
 async function espn(teamKey) {
@@ -152,7 +168,7 @@ async function rss(source, teamKey) {
     try {
       const items = parseFeed(await get(url))
         .filter(i => onDomain(i.url, source.domains))
-        .filter(i => !filter || mentions(`${i.title} ${i.summary}`, t.words));
+        .filter(i => relevant(i, teamKey, filter ? 'general' : source.scope) && (!filter || mentions(`${i.title} ${i.summary}`, t.words)));
       if (items.length) return { url, items };
       errors.push(`${url}: no matching items`);
     } catch (e) { errors.push(`${url}: ${e.message}`); }

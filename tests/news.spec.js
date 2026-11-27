@@ -107,3 +107,24 @@ base('collector keeps ESPN stories about the team and drops league-wide, betting
   plainExpect(espnKeep({ type: 'Media', headline: 'Special cleats', categories: [team(5)], links: { web: { href: 'https://www.espn.com/video/5' } } }, t)).toBe(false);
   plainExpect(espnKeep({ type: 'Story', headline: 'Bengals notes', categories: [team(4)], links: { web: { href: 'https://www.espn.com/nfl/story/6' } } }, t)).toBe(false);
 });
+
+base('collector drops off-topic stories, podcasts and promos', async () => {
+  const { relevant } = await import('../scripts/news.mjs');
+  const it = (title, url, summary = '') => ({ title, url, summary });
+  plainExpect(relevant(it('Who are the Cavs? Still figuring it out', 'https://www.cleveland.com/cavs/2026/11/x.html'), 'cavs')).toBe(true);
+  plainExpect(relevant(it('Kris Bubic and the rotation', 'https://www.cleveland.com/guardians/2026/11/x.html'), 'guardians')).toBe(true);
+  plainExpect(relevant(it("Cleveland's holiday season is here", 'https://www.cleveland.com/entertainment/2026/11/x.html'), 'cavs')).toBe(false);
+  plainExpect(relevant(it("Terry Pluto's 30-year tradition of giving thanks", 'https://www.cleveland.com/sports/2026/11/x.html'), 'cavs')).toBe(false);
+  plainExpect(relevant(it('NBA Power Rankings: Knicks have much to be thankful for', 'https://www.nytimes.com/athletic/1/nba-power/'), 'cavs', 'team-feed')).toBe(false);
+  plainExpect(relevant(it('Browns battering ram Harold Fannin Jr.', 'https://www.nytimes.com/athletic/2/browns-fannin/'), 'browns', 'team-feed')).toBe(true);
+  plainExpect(relevant(it('Has the Cavs’ optimism crossed into delusion? Wine and Gold Talk podcast', 'https://www.cleveland.com/cavs/2026/11/x.html'), 'cavs')).toBe(false);
+  plainExpect(relevant(it('NFL spread, straight-up picks: Week 12', 'https://www.nytimes.com/athletic/3/'), 'browns', 'team-feed')).toBe(false);
+  plainExpect(relevant(it('NBA Power Rankings: Celtics rise', 'https://www.nytimes.com/athletic/4/'), 'cavs', 'team-feed')).toBe(false);
+  // team feeds and official sites keep stories that don't name the team
+  plainExpect(relevant(it('James Harden drops 51 on Pacers', 'https://www.nytimes.com/athletic/5/'), 'cavs', 'team-feed')).toBe(true);
+  plainExpect(relevant(it('Raheim Sanders eligible to return to practice', 'https://www.clevelandbrowns.com/news/x'), 'browns', 'official')).toBe(true);
+  plainExpect(relevant(it('Sign up for Browns Text Alerts to be entered to win tickets', 'https://www.clevelandbrowns.com/news/x'), 'browns', 'official')).toBe(false);
+  // "odds" and "betting" in ordinary headlines are fine
+  plainExpect(relevant(it('Browns defy odds, sit 6-4 with playoff hopes alive', 'https://www.cleveland.com/browns/x'), 'browns')).toBe(true);
+  plainExpect(relevant(it("Is Deshaun Watson's future with the Browns worth betting on?", 'https://www.cleveland.com/browns/x'), 'browns')).toBe(true);
+});
