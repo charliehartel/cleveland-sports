@@ -1776,7 +1776,7 @@ function nhlInsights(g){
   const out = [];
   const a1 = lead(att, 'shot attempts', 10);
   if (a1 && a1.share >= .55) out.push(`${ab(a1.w)} is out-attempting ${ab(a1.l)} ${a1.wv}–${a1.lv} (${Math.round(a1.share * 100)}% of shot attempts).`);
-  const sc = { [A.id]:Number(scoreOf(g.away?.score)) || 0, [H.id]:Number(scoreOf(g.home?.score)) || 0 };
+  const sc = Object.fromEntries(sides.map(t => [t.id, Number(scoreOf(g.byId(t.id)?.score)) || 0])); // by team id (sides are my team first)
   const s1 = lead(sog, 'shots', 8);
   if (s1 && sc[s1.w.id] < sc[s1.l.id]) out.push(`${ab(s1.w)} trails on the scoreboard but leads in shots on goal, ${s1.wv}–${s1.lv}.`);
   const sl = lead(slot, 'slot shots', 4);
