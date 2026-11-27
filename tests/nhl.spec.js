@@ -23,6 +23,14 @@ test.describe('San Jose Sharks (NHL)', () => {
     for (const h of heads.slice(4, -1)) expect(h).toMatch(/^(OT|SO|\dOT)$/);
     // box score: forwards, defense and goalies for both teams, trimmed to hockey columns
     await expect(page.locator('.tab')).toHaveText(['Box Score', 'Team Stats', 'Summary', 'Play-by-Play']);
+    // three stars at the top, and marked next to their names in the box score
+    // (ESPN posts them a few minutes after the final, so a game that just ended may not have them yet)
+    await page.waitForSelector('.panel .grp-title');
+    if (await page.locator('.panel .box h3', { hasText: 'Three stars' }).count()) {
+      await expect(page.locator('.panel .box h3').first()).toHaveText('Three stars');
+      await expect(page.locator('.panel .box').first().locator('.pvl li')).toHaveCount(3);
+      await expect(page.locator('.panel table .star')).toHaveCount(3);
+    }
     await expect(page.locator('.grp-title')).toHaveText(['Skaters', 'Goalies', 'Skaters', 'Goalies']);
     const skaters = page.locator('.panel table').first();
     await expect(skaters.locator('thead th')).toHaveText(['Skaters', 'G', 'A', 'PTS', '+/-', 'S', 'HIT', 'BLK', 'PIM', 'FO%', 'TOI']);
@@ -40,7 +48,7 @@ test.describe('San Jose Sharks (NHL)', () => {
     await page.locator('[data-tab="team"]').click();
     await expect(page.locator('.cmp').first()).toBeVisible();
     await page.locator('[data-tab="summary"]').click();
-    await expect(page.locator('.panel .box h3').first()).toContainText('In-game insights');
+    await expect(page.locator('.panel .box h3', { hasText: 'In-game insights' })).toBeVisible(); // after the three stars, when posted
     // penalties are labeled as penalties and listed in the summary when there were any
     if (await page.locator('.panel .box h3', { hasText: /^Penalties/ }).count()) await expect(page.locator('.panel .penl').first()).toHaveText(/\d+ min/);
     await page.locator('[data-tab="plays"]').click();
