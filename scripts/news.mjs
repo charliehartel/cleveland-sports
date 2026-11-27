@@ -1,0 +1,204 @@
+// Collects Cleveland team news from a fixed list of trusted sources into one JSON file.
+// Run by .github/workflows/news.yml every 20 minutes; the app reads the result.
+// Only the sources listed here are ever included: no blogs, aggregators or fan sites.
+//
+// Usage: node scripts/news.mjs out/news.json
+
+import { writeFile, mkdir } from 'node:fs/promises';
+import { dirname } from 'node:path';
+
+const UA = 'Mozilla/5.0 (compatible; cleveland-sports-news/1.0; +https://github.com/charliehartel/cleveland-sports)';
+const DAYS = 14;              // keep two weeks of news
+const PER_TEAM = 80;          // newest items kept per team
+
+export const TEAMS = {
+  cavs:      { league: 'nba', sport: 'basketball', espnId: '5', words: ['cavaliers', 'cavs'] },
+  browns:    { league: 'nfl', sport: 'football',   espnId: '5', words: ['browns'] },
+  guardians: { league: 'mlb', sport: 'baseball',   espnId: '5', words: ['guardians'] },
+};
+
+// Each RSS source lists candidate feed addresses per team; the first one that returns items is used.
+// `filter: true` marks a general sports feed whose items must mention the team.
+// `domains`: an item's link must be on one of these sites (drops syndicated or third-party posts).
+export const RSS_SOURCES = [
+  {
+    id: 'cleveland', name: 'cleveland.com', domains: ['cleveland.com'],
+    feeds: {
+      browns:    ['https://www.cleveland.com/arc/outboundfeeds/rss/category/browns/?outputType=xml', 'https://www.cleveland.com/browns/index.rss'],
+      cavs:      ['https://www.cleveland.com/arc/outboundfeeds/rss/category/cavs/?outputType=xml', 'https://www.cleveland.com/cavs/index.rss'],
+      guardians: ['https://www.cleveland.com/arc/outboundfeeds/rss/category/guardians/?outputType=xml', 'https://www.cleveland.com/guardians/index.rss'],
+    },
+  },
+  {
+    id: 'athletic', name: 'The Athletic', domains: ['nytimes.com', 'theathletic.com'], paywall: true,
+    feeds: {
+      browns:    ['https://www.nytimes.com/athletic/rss/nfl/browns/', 'https://theathletic.com/rss/nfl/browns/'],
+      cavs:      ['https://www.nytimes.com/athletic/rss/nba/cavaliers/', 'https://theathletic.com/rss/nba/cavaliers/'],
+      guardians: ['https://www.nytimes.com/athletic/rss/mlb/guardians/', 'https://theathletic.com/rss/mlb/guardians/'],
+    },
+  },
+  {
+    id: 'team', name: 'Team site', domains: ['clevelandbrowns.com', 'nba.com', 'mlb.com'],
+    names: { browns: 'ClevelandBrowns.com', cavs: 'Cavs.com', guardians: 'MLB.com' },
+    feeds: {
+      browns:    ['https://www.clevelandbrowns.com/rss/news', 'https://www.clevelandbrowns.com/news/rss'],
+      cavs:      ['https://www.nba.com/cavaliers/rss.xml', 'https://www.nba.com/cavaliers/news/rss.xml'],
+      guardians: ['https://www.mlb.com/guardians/feeds/news/rss.xml'],
+    },
+  },
+  {
+    id: 'fox8', name: 'FOX 8 Cleveland', domains: ['fox8.com'],
+    feeds: {
+      browns:    ['https://fox8.com/sports/cleveland-browns/feed/', { url: 'https://fox8.com/sports/feed/', filter: true }],
+      cavs:      ['https://fox8.com/sports/cleveland-cavaliers/feed/', { url: 'https://fox8.com/sports/feed/', filter: true }],
+      guardians: ['https://fox8.com/sports/cleveland-guardians/feed/', { url: 'https://fox8.com/sports/feed/', filter: true }],
+    },
+  },
+  {
+    id: 'wkyc', name: 'WKYC 3', domains: ['wkyc.com'],
+    feeds: {
+      browns:    ['https://www.wkyc.com/feeds/syndication/rss/sports/browns', { url: 'https://www.wkyc.com/feeds/syndication/rss/sports', filter: true }],
+      cavs:      ['https://www.wkyc.com/feeds/syndication/rss/sports/cavs', { url: 'https://www.wkyc.com/feeds/syndication/rss/sports', filter: true }],
+      guardians: ['https://www.wkyc.com/feeds/syndication/rss/sports/guardians', { url: 'https://www.wkyc.com/feeds/syndication/rss/sports', filter: true }],
+    },
+  },
+  {
+    id: 'news5', name: 'News 5 Cleveland', domains: ['news5cleveland.com'],
+    feeds: {
+      browns:    ['https://www.news5cleveland.com/sports/browns.rss', { url: 'https://www.news5cleveland.com/sports.rss', filter: true }],
+      cavs:      ['https://www.news5cleveland.com/sports/cavs.rss', { url: 'https://www.news5cleveland.com/sports.rss', filter: true }],
+      guardians: ['https://www.news5cleveland.com/sports/guardians.rss', { url: 'https://www.news5cleveland.com/sports.rss', filter: true }],
+    },
+  },
+  // Threads (team accounts) will go here once the Meta app is approved for profile discovery.
+];
+
+/* ---------- RSS / Atom parsing (no dependencies) ---------- */
+const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', rsquo: '’', lsquo: '‘', rdquo: '”', ldquo: '“', mdash: '—', ndash: '–', hellip: '…' };
+export function decode(s) {
+  return String(s ?? '')
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
+    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCodePoint(parseInt(n, 16)))
+    .replace(/&([a-z]+);/gi, (m, n) => ENTITIES[n.toLowerCase()] ?? m);
+}
+const stripTags = s => decode(s).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+function tag(block, name) {
+  const m = block.match(new RegExp(`<${name}(?:\\s[^>]*)?>([\\s\\S]*?)</${name}>`, 'i'));
+  return m ? m[1] : '';
+}
+function attr(block, name, a) {
+  const m = block.match(new RegExp(`<${name}\\b[^>]*\\b${a}=["']([^"']+)["']`, 'i'));
+  return m ? decode(m[1]) : '';
+}
+export function parseFeed(xml) {
+  const blocks = xml.match(/<item[\s>][\s\S]*?<\/item>/gi) || xml.match(/<entry[\s>][\s\S]*?<\/entry>/gi) || [];
+  return blocks.map(b => {
+    const link = decode(tag(b, 'link')).trim() || attr(b, 'link', 'href');
+    const desc = tag(b, 'description') || tag(b, 'summary') || tag(b, 'content:encoded') || tag(b, 'content');
+    const img = attr(b, 'media:content', 'url') || attr(b, 'media:thumbnail', 'url')
+      || (/image\//i.test(attr(b, 'enclosure', 'type')) ? attr(b, 'enclosure', 'url') : '')
+      || (decode(desc).match(/<img[^>]+src=["']([^"']+)["']/i) || [])[1] || '';
+    return {
+      title: stripTags(tag(b, 'title')),
+      url: link,
+      published: decode(tag(b, 'pubDate') || tag(b, 'published') || tag(b, 'updated') || tag(b, 'dc:date')).trim(),
+      summary: stripTags(desc).slice(0, 280),
+      author: stripTags(tag(b, 'dc:creator') || tag(tag(b, 'author'), 'name') || tag(b, 'author')),
+      image: img,
+    };
+  }).filter(i => i.title && i.url);
+}
+
+/* ---------- helpers ---------- */
+async function get(url, type = 'text') {
+  const r = await fetch(url, { headers: { 'user-agent': UA, accept: type === 'json' ? 'application/json' : 'application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.5' }, redirect: 'follow', signal: AbortSignal.timeout(20000) });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return type === 'json' ? r.json() : r.text();
+}
+const host = u => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return ''; } };
+const onDomain = (u, domains) => domains.some(d => host(u) === d || host(u).endsWith('.' + d));
+export const mentions = (text, words) => words.some(w => new RegExp(`\\b${w}\\b`, 'i').test(text));
+const normUrl = u => { try { const x = new URL(u); x.search = ''; x.hash = ''; return x.toString().replace(/\/$/, ''); } catch { return u; } };
+const normTitle = t => t.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+const httpsOnly = u => (typeof u === 'string' && /^https?:\/\//.test(u)) ? u.replace(/^http:/, 'https:') : '';
+
+/* ---------- ESPN ---------- */
+// ESPN's team news mixes in league-wide pieces tagged with every team; keep stories about this team.
+export function espnKeep(a, team) {
+  const teams = (a.categories || []).filter(c => c.type === 'team');
+  const tagged = teams.some(c => String(c.teamId ?? c.team?.id) === team.espnId);
+  if (!tagged) return false;
+  if (a.type === 'Media') return false; // video clips
+  const url = a.links?.web?.href || '';
+  if (/\/(betting|fantasy|espn-bet)\//.test(url) || /\b(betting|odds|fantasy|picks)\b/i.test(a.headline || '')) return false;
+  return teams.length <= 2 || mentions(`${a.headline} ${a.description || ''}`, team.words);
+}
+async function espn(teamKey) {
+  const t = TEAMS[teamKey];
+  const d = await get(`https://site.api.espn.com/apis/site/v2/sports/${t.sport}/${t.league}/news?team=${t.espnId}&limit=50`, 'json');
+  return (d.articles || []).filter(a => espnKeep(a, t)).map(a => ({
+    title: a.headline, url: httpsOnly(a.links?.web?.href), published: a.published, summary: (a.description || '').slice(0, 280),
+    author: a.byline || '', image: httpsOnly(a.images?.[0]?.url),
+  }));
+}
+
+/* ---------- RSS ---------- */
+async function rss(source, teamKey) {
+  const t = TEAMS[teamKey];
+  const errors = [];
+  for (const f of source.feeds[teamKey] || []) {
+    const { url, filter } = typeof f === 'string' ? { url: f, filter: false } : f;
+    try {
+      const items = parseFeed(await get(url))
+        .filter(i => onDomain(i.url, source.domains))
+        .filter(i => !filter || mentions(`${i.title} ${i.summary}`, t.words));
+      if (items.length) return { url, items };
+      errors.push(`${url}: no matching items`);
+    } catch (e) { errors.push(`${url}: ${e.message}`); }
+  }
+  throw new Error(errors.join(' | ') || 'no feeds configured');
+}
+
+/* ---------- main ---------- */
+export async function collect() {
+  const now = Date.now();
+  const sources = [], items = [];
+  const jobs = [];
+  for (const teamKey of Object.keys(TEAMS)) {
+    jobs.push(espn(teamKey).then(list => ({ id: 'espn', name: 'ESPN', teamKey, url: 'site.api.espn.com', list }))
+      .catch(e => ({ id: 'espn', name: 'ESPN', teamKey, error: e.message })));
+    for (const s of RSS_SOURCES) {
+      jobs.push(rss(s, teamKey).then(r => ({ id: s.id, name: s.names?.[teamKey] || s.name, teamKey, url: r.url, list: r.items, paywall: !!s.paywall }))
+        .catch(e => ({ id: s.id, name: s.names?.[teamKey] || s.name, teamKey, error: e.message })));
+    }
+  }
+  for (const r of await Promise.all(jobs)) {
+    sources.push({ id: r.id, name: r.name, team: r.teamKey, ok: !r.error, count: r.list?.length || 0, feed: r.url || null, error: r.error || null });
+    for (const i of r.list || []) {
+      const ts = Date.parse(i.published);
+      if (!isFinite(ts) || now - ts > DAYS * 864e5 || ts - now > 864e5) continue;
+      items.push({ team: r.teamKey, source: r.id, sourceName: r.name, paywall: !!r.paywall,
+        title: i.title, url: httpsOnly(i.url), published: new Date(ts).toISOString(), summary: i.summary, author: i.author, image: httpsOnly(i.image) });
+    }
+  }
+  // de-duplicate: same link, or the same headline from another outlet (syndicated copies)
+  const seenUrl = new Set(), seenTitle = new Set(), out = [];
+  for (const i of items.sort((a, b) => b.published.localeCompare(a.published))) {
+    const u = `${i.team}|${normUrl(i.url)}`, t = `${i.team}|${normTitle(i.title)}`;
+    if (!i.url || seenUrl.has(u) || seenTitle.has(t)) continue;
+    seenUrl.add(u); seenTitle.add(t); out.push(i);
+  }
+  const capped = Object.keys(TEAMS).flatMap(k => out.filter(i => i.team === k).slice(0, PER_TEAM));
+  return { updated: new Date().toISOString(), sources, items: capped.sort((a, b) => b.published.localeCompare(a.published)) };
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  const outFile = process.argv[2] || 'out/news.json';
+  const data = await collect();
+  for (const s of data.sources) console.log(`${s.ok ? 'ok  ' : 'FAIL'} ${s.team.padEnd(9)} ${s.name.padEnd(20)} ${String(s.count).padStart(3)} ${s.ok ? s.feed : s.error}`);
+  console.log(`${data.items.length} items`);
+  if (!data.items.length) { console.error('No news collected; leaving the previous file in place.'); process.exit(1); }
+  await mkdir(dirname(outFile), { recursive: true });
+  await writeFile(outFile, JSON.stringify(data));
+}

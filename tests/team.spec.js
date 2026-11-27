@@ -12,7 +12,7 @@ for (const t of TEAMS) {
       await page.goto(`/#/t/${t.league}/5`);
       await ready(page, '.team-hero');
       await expect(page.locator('.team-hero')).toContainText(t.name);
-      await expect(page.locator('.tab')).toHaveText(['Schedule', 'Team Stats', 'Standings']);
+      await expect(page.locator('.tab')).toHaveText(['Schedule', 'Team Stats', 'Standings', 'News']);
       // Offseason: the current season may have no results yet, so fall back to last season.
       if (!(await page.locator('.srow .wl').count())) {
         await page.selectOption('[data-season]', { index: 1 });
