@@ -205,6 +205,15 @@ details.acc>summary{grid-template-columns:1fr auto}
 .tile .rk{position:absolute;right:10px;bottom:7px;font-size:12px;font-weight:700;color:var(--muted)}
 .tile .rk.top{color:var(--good)}
 .tile .rk.bottom{color:var(--live)}
+.livebar{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:4px 6px;margin:12px auto 0;padding:6px 12px;border-radius:999px;font-size:12px;color:var(--muted);background:var(--surface-2);width:fit-content;max-width:100%;text-align:center}
+.livebar b{color:var(--live)}
+.livebar .dot{width:7px;height:7px;border-radius:50%;background:var(--live);animation:pulse 1.4s infinite}
+.livebar.stale b{color:var(--warn)}
+.livebar.stale .dot{background:var(--warn);animation:none}
+.livebar .ago{font-variant-numeric:tabular-nums}
+.plays li.new{animation:newplay 3s ease-out}
+@keyframes newplay{0%{background:color-mix(in srgb,var(--accent) 22%,transparent)}100%{background:transparent}}
+@media (prefers-reduced-motion:reduce){.plays li.new{animation:none;background:color-mix(in srgb,var(--accent) 10%,transparent)}.livebar .dot{animation:none}}
 .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}
 .tile{background:var(--surface-2);border-radius:10px;padding:10px 12px}
 .tile .tv{font-size:20px;font-weight:800;letter-spacing:-.01em}
@@ -469,16 +478,46 @@ function renderHome(){
 /* ---------- Game view ---------- */
 const view = { league:null, id:null, tab:null, s:null, sit:null, open:new Set(), period:'all', shotTeam:'all', loading:false };
 
+const LIVE_MS = 5000; // ESPN caches game data for ~1s, so this picks up changes within a few seconds
+function playIds(s){
+  if (s.drives) return [...(s.drives.previous || []), ...(s.drives.current ? [s.drives.current] : [])].flatMap(d => (d.plays || []).map(p => String(p.id)));
+  return (s.plays || []).map(p => String(p.id));
+}
+function gameSig(s, sit, ids){
+  const c = s.header?.competitions?.[0] || {};
+  return JSON.stringify([c.status?.displayClock, c.status?.period, c.status?.type?.name,
+    (c.competitors || []).map(x => [x.score, x.possession, (x.linescores || []).length]),
+    ids.length, ids[ids.length - 1], sit ? [sit.down, sit.distance, sit.possessionText, sit.balls, sit.strikes, sit.outs, sit.onFirst, sit.onSecond, sit.onThird, sit.lastPlay?.id] : null,
+    (s.boxscore?.players || []).map(p => (p.statistics || []).map(g => (g.totals || []).join()).join()).join()]);
+}
+const agoText = ms => { const sec = Math.max(0, Math.round(ms / 1000)); return sec < 60 ? `${sec}s ago` : `${Math.floor(sec / 60)}m ${sec % 60}s ago`; };
+const fmtClock = d => d.toLocaleTimeString([], { hour:'numeric', minute:'2-digit', second:'2-digit' });
+// Updates the live status line every second without redrawing the page.
+function tickLive(){
+  const el = document.getElementById('livebar');
+  if (!el || !view.fetchedAt) return;
+  const age = Date.now() - view.fetchedAt;
+  const stale = age > 30e3 || view.failures > 0;
+  el.className = 'livebar' + (stale ? ' stale' : '');
+  const espn = view.espnAt ? ` · ESPN data as of ${fmtClock(view.espnAt)}` : '';
+  el.innerHTML = stale
+    ? `<span class="dot"></span><b>Updates delayed</b> · last updated ${esc(fmtClock(view.fetchedAt))} (${esc(agoText(age))}) · retrying`
+    : `<span class="dot"></span><b>Live</b> · Last updated ${esc(fmtClock(view.fetchedAt))} <span class="ago">(${esc(agoText(age))})</span>${esc(espn)}`;
+}
+setInterval(tickLive, 1000);
+
 async function showGame(league, id){
   const sameGame = view.league === league && view.id === id;
-  if (!sameGame) Object.assign(view, { league, id, tab:null, s:null, sit:null, open:new Set(), period:'all', shotTeam:'all' });
+  if (!sameGame) Object.assign(view, { league, id, tab:null, s:null, sit:null, open:new Set(), period:'all', shotTeam:'all',
+    sig:null, seen:null, fresh:new Set(), fetchedAt:null, espnAt:null, failures:0 });
+  if (document.hidden && view.s) { schedule(() => showGame(league, id), LIVE_MS); return; } // paused while the app is in the background
   if (!view.s) $('#app').innerHTML = `<a class="back" href="#/">← All games</a><div class="loading">Loading game…</div>`;
   const sport = SPORT[league];
   try {
     const s = await getJSON(`${API}/${sport}/${league}/summary?event=${encodeURIComponent(id)}`);
     const state = s.header?.competitions?.[0]?.status?.type?.state || 'pre';
     let sit = null;
-    if (state === 'in') {
+    if (state === 'in' && league !== 'nba') {
       try {
         const sb = await leagueScoreboard(teamOf(league));
         const ev = (sb.events || []).find(e => e.id === id);
@@ -492,16 +531,30 @@ async function showGame(league, id){
     const bay = { league, date:new Date(hc.date || 0), id,
       bay:bayArea(league, new Date(hc.date || 0), bcList(hc), hs((hc.competitors || []).find(x => x.homeAway === 'home')), hs((hc.competitors || []).find(x => x.homeAway === 'away'))) };
     if (state !== 'post') await refineBay([bay]);
-    view.s = s; view.sit = sit; view.bay = bay.bay;
+    // Which plays are new since the last update (highlighted briefly), and did anything change at all?
+    const ids = playIds(s);
+    const sig = gameSig(s, sit, ids);
+    const changed = sig !== view.sig;
+    view.fresh = view.seen ? new Set(ids.filter(x => !view.seen.has(x))) : new Set();
+    view.seen = new Set(ids);
+    view.s = s; view.sit = sit; view.bay = bay.bay; view.sig = sig;
+    view.fetchedAt = new Date(); view.failures = 0;
+    view.espnAt = s.meta?.lastUpdatedAt ? new Date(s.meta.lastUpdatedAt) : null;
     if (!view.tab) view.tab = state === 'in' ? 'gamecast' : state === 'post' ? 'box' : 'preview';
-    renderGame();
+    if (changed || !$('#app .score-hero')) renderGame();
+    view.fresh = new Set(); // highlight new plays once, not again on tab switches
+    tickLive();
     setUpdated(state === 'in' ? ' · live' : '');
     const start = new Date(s.header?.competitions?.[0]?.date || 0);
-    if (state === 'in') schedule(() => showGame(league, id), 15e3);
+    if (state === 'in') schedule(() => showGame(league, id), LIVE_MS);
     else if (state === 'pre' && start - Date.now() < H) schedule(() => showGame(league, id), 60e3);
   } catch (e) {
     if (!view.s) $('#app').innerHTML = `<a class="back" href="#/">← All games</a><div class="err">Couldn't load this game (${esc(e.message)}). Retrying…</div>`;
-    schedule(() => showGame(league, id), 20e3);
+    view.failures = (view.failures || 0) + 1;
+    tickLive();
+    // keep retrying quickly during a live game, backing off to 30s
+    const live = view.s?.header?.competitions?.[0]?.status?.type?.state === 'in';
+    schedule(() => showGame(league, id), live ? Math.min(30e3, LIVE_MS * 2 ** Math.min(view.failures, 3)) : 20e3);
   }
 }
 
@@ -561,6 +614,7 @@ function hero(g){
   const bc = bcOf(comp);
   return `<div class="score-hero"><div class="hero-grid">${t(away)}<div class="hmid">${mid}</div>${t(home)}</div>
     ${linescore(g)}
+    ${state === 'in' ? `<div class="livebar" id="livebar" role="status" aria-live="off"></div>` : ''}
     <div class="hero-foot">${esc([venue, bc].filter(Boolean).join(' · '))}<br>${bayPill(view.bay)}
       ${view.bay?.why ? `<div class="baynote">${esc(view.bay.why)}${view.bay.regional ? ` <a href="https://506sports.com/nfl.php" target="_blank" rel="noopener">See this week's coverage maps</a>` : ''}</div>` : ''}</div></div>`;
 }
@@ -804,7 +858,8 @@ function renderSummary(g){
 /* ---------- Play-by-play ---------- */
 function playRow(g, p, clk){
   const dd = p.start?.downDistanceText && !/kickoff|timeout|end of|extra point/i.test(p.type?.text || '') ? `<span class="dd">${esc(p.start.downDistanceText)}</span>` : '';
-  return `<li class="${p.scoringPlay ? 'scoring' : ''}"><span class="clk">${esc(clk)}</span>${img(teamLogoById(g, p.team?.id), '', '')}<span class="txt">${dd}${esc(p.text)}</span><span class="scr">${esc(p.awayScore ?? '')}–${esc(p.homeScore ?? '')}</span></li>`;
+  const isNew = view.fresh?.has(String(p.id));
+  return `<li class="${p.scoringPlay ? 'scoring' : ''}${isNew ? ' new' : ''}"><span class="clk">${esc(clk)}</span>${img(teamLogoById(g, p.team?.id), '', '')}<span class="txt">${dd}${esc(p.text)}</span><span class="scr">${esc(p.awayScore ?? '')}–${esc(p.homeScore ?? '')}</span></li>`;
 }
 function periodChips(periods, label){
   return `<div class="pchips"><button class="chip" data-period="all" aria-pressed="${view.period==='all'}">All</button>${periods.map(n =>
@@ -889,7 +944,7 @@ function recentPlays(g){
   const ps = lastPlays(g, 8);
   if (!ps.length) return '';
   const clk = p => g.league === 'mlb' ? `${p.period?.type === 'Bottom' ? 'B' : 'T'}${p.period?.number}` : g.league === 'nba' ? `${nbaPer(p.period?.number)} ${p.clock?.displayValue || ''}` : `Q${p.period?.number} ${p.clock?.displayValue || ''}`;
-  return `<div class="box"><h3>Latest plays <span class="sub">auto-updates every 15s</span></h3><ul class="plays">${ps.map(p => playRow(g, p, clk(p))).join('')}</ul></div>`;
+  return `<div class="box"><h3>Latest plays <span class="sub">new plays appear automatically</span></h3><ul class="plays">${ps.map(p => playRow(g, p, clk(p))).join('')}</ul></div>`;
 }
 function quickCompare(g){
   const [a, h] = orderedTeams(g);
