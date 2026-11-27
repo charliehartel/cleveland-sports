@@ -17,7 +17,7 @@ test.describe('San Jose Sharks (NHL)', () => {
     await expect(page).toHaveURL(/#\/g\/nhl\/\d+/);
     await ready(page, '.score-hero');
     // line score: three periods (plus OT/SO columns when needed) and a total
-    const heads = await page.locator('.line thead th').allTextContents();
+    const heads = await page.locator('.line').first().locator('thead th').allTextContents(); // the line score (the shots table follows it)
     expect(heads.slice(1, 4)).toEqual(['1', '2', '3']);
     expect(heads[heads.length - 1]).toBe('T');
     for (const h of heads.slice(4, -1)) expect(h).toMatch(/^(OT|SO|\dOT)$/);
