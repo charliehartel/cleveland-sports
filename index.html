@@ -150,6 +150,9 @@ td.pl{max-width:170px;overflow:hidden;text-overflow:ellipsis}
 .plays .scr{font-size:12px;color:var(--muted);white-space:nowrap;padding-top:2px}
 .plays li.scoring .txt{font-weight:600}
 .plays li.scoring .scr{color:var(--text);font-weight:700}
+.gstr{display:inline-block;margin-right:6px;padding:0 6px;border-radius:4px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;background:var(--surface-2);color:var(--text)}
+.star{margin-left:6px;font-size:11px;font-weight:800;color:#c48a00;white-space:nowrap}
+@media (prefers-color-scheme:dark){.star{color:#f5c542}}
 .penl{display:inline-block;margin-right:6px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;color:var(--warn)}
 .ppbar{display:inline-block;margin-top:6px;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:700;background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}
 /* Hockey: my team's goals get a red goal light; the other team's goals are muted */
@@ -874,7 +877,8 @@ function renderBox(g){
       const rows = [];
       const rowFor = a => {
         const pos = a.athlete?.position?.abbreviation || a.position?.abbreviation || '';
-        const name = `${esc(a.athlete?.shortName || a.athlete?.displayName)}${pos ? `<span class="pos">${esc(pos)}</span>` : ''}`;
+        const star = g.league === 'nhl' && g.state === 'post' ? nhlStarMap(g)[String(a.athlete?.id)] : null;
+        const name = `${esc(a.athlete?.shortName || a.athlete?.displayName)}${pos ? `<span class="pos">${esc(pos)}</span>` : ''}${star ? `<span class="star" title="${esc(star.label)} star">${'★'.repeat(star.n)}</span>` : ''}`;
         if (!a.stats?.length) return `<tr><td class="pl">${name}</td><td colspan="${labels.length}" style="text-align:left"><span class="dnp">${esc(a.reason || 'Did not play')}</span></td></tr>`;
         const extra = der ? der.calc(a.stats) : [];
         const vals = nhl ? nhl.pick(a.stats) : [...a.stats, ...extra];
@@ -893,7 +897,7 @@ function renderBox(g){
     }).join('');
     return `<div class="box"><div class="teamhead">${teamLink(g.league, p.team, img(logoOf(p.team), 'logo', p.team?.abbreviation) + esc(p.team?.displayName))}</div>${groups}</div>`;
   });
-  return teams.join('') + (g.league === 'nba' ? `<div class="note">TS% (true shooting) and eFG% (effective field goal) are calculated from the box score.</div>` : '')
+  return (g.league === 'nhl' ? nhlThreeStars(g) : '') + teams.join('') + (g.league === 'nba' ? `<div class="note">TS% (true shooting) and eFG% (effective field goal) are calculated from the box score.</div>` : '')
     + (g.league === 'nhl' ? nhlLinesBox(g) + nhlScratchNote(g) : '');
 }
 
@@ -1031,12 +1035,12 @@ function scoringSummary(g){
     : g.league === 'nhl' ? nhlClk(g, p) : `Q${p.period?.number}${p.clock?.displayValue ? ' ' + p.clock.displayValue : ''}`;
   const seen = new Set();
   const items = list.filter(p => { const k = p.id; if (seen.has(k)) return false; seen.add(k); return true; }).map(p =>
-    `<li class="scoring"><span class="clk">${esc(per(p))}</span>${img(teamLogoById(g, p.team?.id), '', '')}<span class="txt">${esc(p.text)}${nhlStrength(g, p)}</span><span class="scr">${playScore(g, p)}</span></li>`).join(''); // plain list: the goal light is for the play-by-play
+    `<li class="scoring"><span class="clk">${esc(per(p))}</span>${img(teamLogoById(g, p.team?.id), '', '')}<span class="txt">${nhlGoalTag(g, p)}${esc(p.text)}</span><span class="scr">${playScore(g, p)}</span></li>`).join(''); // plain list: the goal light is for the play-by-play
   return `<div class="box"><h3>Scoring summary <span class="sub">${esc(g.away?.team?.abbreviation)}–${esc(g.home?.team?.abbreviation)}</span></h3><ul class="plays">${items}</ul></div>`;
 }
 
 function renderSummary(g){
-  return [g.league === 'nhl' ? nhlInsights(g) : '', winProb(g), scoringSummary(g), g.league === 'nhl' ? nhlPenaltySummary(g) : '', g.league === 'nhl' ? nhlStreaks(g) : '', g.league === 'nhl' ? nhlMilestones(g) : '', leaders(g)].filter(Boolean).join('') || `<div class="empty">No summary available.</div>`;
+  return [g.league === 'nhl' ? nhlThreeStars(g) : '', g.league === 'nhl' ? nhlInsights(g) : '', winProb(g), scoringSummary(g), g.league === 'nhl' ? nhlPenaltySummary(g) : '', g.league === 'nhl' ? nhlStreaks(g) : '', g.league === 'nhl' ? nhlMilestones(g) : '', leaders(g)].filter(Boolean).join('') || `<div class="empty">No summary available.</div>`;
 }
 
 /* ---------- Play-by-play ---------- */
@@ -1055,7 +1059,7 @@ function playRow(g, p, clk){
   const isNew = view.fresh?.has(String(p.id));
   const gk = goalKind(g, p);
   const pen = g.league === 'nhl' && p.type?.penaltyMinutes != null ? `<span class="penl">Penalty · ${esc(nhlPenLabel(p))}</span>`
-    : g.league === 'nhl' && p.scoringPlay && /empty[- ]?net/i.test(`${p.text} ${p.strength?.text || ''} ${p.type?.text || ''}`) ? `<span class="penl">Empty net</span>` : '';
+    : nhlGoalTag(g, p);
   return `<li class="${p.scoringPlay ? 'scoring' : ''}${gk ? ' goal-' + gk : ''}${isNew ? ' new' : ''}"><span class="clk">${esc(clk)}</span>${img(teamLogoById(g, p.team?.id), '', '')}<span class="txt">${gk === 'mine' ? goalBanner(g, p) : ''}${pen}${dd}${esc(p.text)}</span><span class="scr">${playScore(g, p)}</span></li>`;
 }
 function periodChips(periods, label){
@@ -1070,10 +1074,10 @@ const nhlPerLabel = n => n <= 3 ? String(n) : n === 4 ? 'OT' : nhlPlayoffs() ? `
 const nhlPerName = n => n <= 3 ? ordinal(n) : nhlPerLabel(n);
 const isShootout = p => !nhlPlayoffs() && p.period?.number >= 5;
 const nhlClk = (g, p) => isShootout(p) ? 'SO' : `${nhlPerName(p.period?.number || 0)} ${p.clock?.displayValue || ''}`.trim();
-function nhlStrength(g, p){
-  const t = p.strength?.abbreviation;
-  if (g.league !== 'nhl' || !p.scoringPlay || !t || t === 'even-strength') return '';
-  return ` <span class="dd">${esc(p.strength.text)}</span>`;
+const NHL_GOAL_STR = { 'power-play':'Power-play goal', 'short-handed':'Shorthanded goal', 'empty-net':'Empty-net goal' };
+function nhlGoalTag(g, p){
+  const label = g.league === 'nhl' && p.scoringPlay ? NHL_GOAL_STR[p.strength?.abbreviation] : null;
+  return label ? `<span class="gstr">${esc(label)}</span>` : '';
 }
 // During a shootout ESPN's play scores count shootout goals, not the game score: leave them out.
 function playScore(g, p){
@@ -1317,7 +1321,7 @@ function nhlLive(g){
   const sog = c => (orderedTeams(g).find(t => String(t?.team?.id) === String(c?.team?.id))?.statistics || []).find(s => s.name === 'shotsTotal')?.displayValue;
   const sa = sog(g.away), sh = sog(g.home);
   const logo = teamLogoById(g, last.team?.id), gk = goalKind(g, last);
-  return `<div class="box"><div class="lastplay"><span class="lbl">Last play · ${esc(nhlClk(g, last))}</span>${logo ? `<span style="display:inline-flex;gap:8px;align-items:center;flex-wrap:wrap${gk === 'opp' ? ';opacity:.6' : ''}">${img(logo, 'logo', '')}${gk === 'mine' ? goalBanner(g, last) : ''}${esc(last.text)}</span>` : esc(last.text)}</div>
+  return `<div class="box"><div class="lastplay"><span class="lbl">Last play · ${esc(nhlClk(g, last))}</span>${logo ? `<span style="display:inline-flex;gap:8px;align-items:center;flex-wrap:wrap${gk === 'opp' ? ';opacity:.6' : ''}">${img(logo, 'logo', '')}${gk === 'mine' ? goalBanner(g, last) : ''}${nhlGoalTag(g, last)}${esc(last.text)}</span>` : esc(last.text)}</div>
     ${sa != null && sh != null ? `<div class="small" style="margin-top:8px">Shots on goal: <b>${esc(g.away?.team?.abbreviation)} ${esc(sa)}</b> · <b>${esc(g.home?.team?.abbreviation)} ${esc(sh)}</b></div>` : ''}</div>`;
 }
 // ESPN rink coordinates are feet from center ice (x −100…100, goal lines at ±89; y −42.5…42.5).
@@ -1798,6 +1802,35 @@ function nhlSpecialTeams(g, pp){
     `<b>${esc(pp.pp.abbr)} tonight</b> ${tn.goals} for ${tn.opps}`,
   ].filter(Boolean);
   return `<div class="pvl" style="margin:0 0 10px"><div class="meta" style="font-size:14px;color:var(--text)">${parts.join(' · ')}</div></div>`;
+}
+const NHL_STARS = [['firstStar', '1st'], ['secondStar', '2nd'], ['thirdStar', '3rd']];
+function nhlStarMap(g){
+  const fa = g.comp.status?.featuredAthletes || [];
+  return Object.fromEntries(NHL_STARS.map(([k, label], i) => [String(fa.find(f => f.name === k)?.athlete?.id || ''), { n:i + 1, label }]).filter(([id]) => id));
+}
+// Tonight's line for a player, from the box score
+function nhlBoxLine(g, aid){
+  for (const p of g.s.boxscore?.players || []) for (const gp of p.statistics || []) {
+    const a = (gp.athletes || []).find(x => String(x.athlete?.id) === String(aid));
+    if (!a) continue;
+    const k = gp.keys || [], v = n => a.stats?.[k.indexOf(n)];
+    if (gp.name === 'goalies') return `${v('saves')} saves on ${v('shotsAgainst')} shots (${v('savePct')})`;
+    const gl = Number(v('goals')) || 0, as = Number(v('assists')) || 0;
+    return [gl ? `${gl} G` : '', as ? `${as} A` : '', `${v('shotsTotal') || 0} shots`, v('plusMinus') ? `${v('plusMinus')} +/-` : '', `${v('timeOnIce')} TOI`].filter(Boolean).join(', ');
+  }
+  return '';
+}
+function nhlThreeStars(g){
+  if (g.state !== 'post') return '';
+  const fa = g.comp.status?.featuredAthletes || [];
+  const stars = NHL_STARS.map(([k, label]) => ({ label, f:fa.find(f => f.name === k) })).filter(x => x.f?.athlete);
+  if (!stars.length) return '';
+  const goalie = n => fa.find(f => f.name === n)?.athlete;
+  const w = goalie('winningGoalie'), l = goalie('losingGoalie');
+  return `<div class="box"><h3>Three stars</h3><ul class="pvl">${stars.map(({ label, f }) => `<li><div class="top"><span class="star" style="margin:0;font-size:14px">${'★'.repeat(label === '1st' ? 1 : label === '2nd' ? 2 : 3)}</span>
+      <span class="small">${esc(label)} star</span>${img(teamLogoById(g, f.team?.id || f.athlete?.team?.id), 'logo', '')}<span class="nm">${esc(f.athlete.displayName)}</span></div>
+      <div class="meta">${esc(nhlBoxLine(g, f.athlete.id))}</div></li>`).join('')}</ul>
+    ${w || l ? `<div class="note">${w ? `Win: ${esc(w.displayName)}` : ''}${w && l ? ' · ' : ''}${l ? `Loss: ${esc(l.displayName)}` : ''}</div>` : ''}</div>`;
 }
 function nhlPenaltySummary(g){
   const { pens } = nhlPenaltyState(g);
