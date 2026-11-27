@@ -64,3 +64,22 @@ test.describe('San Jose Sharks (NHL)', () => {
     await page.locator('[data-sview="division"]').click();
   });
 });
+
+test('hockey preview: goalies, out tonight, leaders with league ranks, streaks and season series', async ({ page }) => {
+  await page.goto('/#/t/nhl/18');
+  await ready(page, '.srow');
+  const next = page.locator('.schedcols section').first().locator('.srow').first();
+  test.skip(!(await next.count()), 'no upcoming Sharks games');
+  await next.click();
+  await ready(page, '.score-hero');
+  await expect(page.locator('.tab')).toHaveText(['Preview']);
+  await expect(page.locator('.panel .box h3')).toContainText(['Game info', 'Goalies', 'Out tonight', 'Season leaders', 'Streaks', 'Season series']);
+  // goalies with season numbers, and each one's last start once game logs load
+  await expect(page.locator('.box', { hasText: 'Goalies' }).locator('.pvl li').first()).toContainText(/GP · \d+-\d+-\d+ · /);
+  await expect(page.locator('.box', { hasText: 'Goalies' })).toContainText(/Last start|No starts this season/);
+  // league ranks for the leaders, and the streak check finishes
+  await expect(page.locator('.box', { hasText: 'Season leaders' }).locator('.lrk').first()).toHaveText(/in NHL$/);
+  await expect(page.locator('.box', { hasText: 'Streaks' })).not.toContainText('Checking recent games');
+  // this game is marked in the season series
+  await expect(page.locator('.box', { hasText: 'Season series' })).toContainText('This game');
+});
