@@ -676,7 +676,7 @@ async function showGame(league, id){
     view.s = s; view.sit = sit; view.bay = bay.bay; view.sig = sig;
     view.fetchedAt = new Date(); view.failures = 0;
     view.espnAt = s.meta?.lastUpdatedAt ? new Date(s.meta.lastUpdatedAt) : null;
-    if (!view.tab) view.tab = state === 'in' ? 'gamecast' : state === 'post' ? 'box' : 'preview';
+    if (!view.tab) view.tab = state === 'in' ? 'gamecast' : state === 'post' ? (league === 'nhl' ? 'summary' : 'box') : 'preview';
     if (changed || !$('#app .score-hero')) renderGame();
     if (league === 'nhl') loadNhlExtra(gameCtx(), state); // scratches, player stats, ranks, streaks (fills in as it arrives)
     view.fresh = new Set(); // highlight new plays once, not again on tab switches
@@ -727,7 +727,7 @@ function tabList(g){
   const plays = { key:'plays', label:'Play-by-Play', render:renderPlays };
   const summary = { key:'summary', label:'Summary', render:renderSummary };
   if (g.state === 'in') return [{ key:'gamecast', label:'Gamecast', render:renderGamecast }, box, team, plays];
-  if (g.state === 'post') return [box, team, summary, plays];
+  if (g.state === 'post') return g.league === 'nhl' ? [summary, box, team, plays] : [box, team, summary, plays]; // hockey: three stars and insights first
   return [{ key:'preview', label:'Preview', render:renderPreview }];
 }
 

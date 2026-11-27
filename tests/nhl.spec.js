@@ -22,7 +22,10 @@ test.describe('San Jose Sharks (NHL)', () => {
     expect(heads[heads.length - 1]).toBe('T');
     for (const h of heads.slice(4, -1)) expect(h).toMatch(/^(OT|SO|\dOT)$/);
     // box score: forwards, defense and goalies for both teams, trimmed to hockey columns
-    await expect(page.locator('.tab')).toHaveText(['Box Score', 'Team Stats', 'Summary', 'Play-by-Play']);
+    // finished hockey games open on the Summary
+    await expect(page.locator('.tab')).toHaveText(['Summary', 'Box Score', 'Team Stats', 'Play-by-Play']);
+    await expect(page.locator('.tab[aria-selected="true"]')).toHaveText('Summary');
+    await page.locator('[data-tab="box"]').click();
     // three stars at the top, and marked next to their names in the box score
     // (ESPN posts them a few minutes after the final, so a game that just ended may not have them yet)
     await page.waitForSelector('.panel .grp-title');
