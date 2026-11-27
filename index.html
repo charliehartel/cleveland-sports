@@ -17,6 +17,7 @@
   --accent:#e4572e;--live:#d7263d;--good:#1f8a4c;--warn:#b45309;--focus:#2563eb;
   --cavs:#860038;--browns:#ff3c00;--guardians:#00385d;
   --warriors:#1d428a;--niners:#aa0000;--sharks:#006d75;--giants:#e3521b;--athletics:#0f5a3c;--raiders:#5d6166;
+  --mets:#ff5910;--nygiants:#0b2265;--knicks:#006bb6;--yankees:#0c2340;--jets:#125740;
   --shadow:0 1px 2px rgba(0,0,0,.05),0 2px 8px rgba(0,0,0,.04);
   --field:#2f7d3a;--field-line:rgba(255,255,255,.55);--zone:#1b1a18;
 }
@@ -25,6 +26,7 @@
   --accent:#ff7a50;--live:#ff4d61;--good:#4cc27e;--warn:#f5a524;--focus:#7aa2ff;
   --cavs:#c23a6e;--browns:#ff6a33;--guardians:#4d8fc4;
   --warriors:#5b8ee6;--niners:#e0484d;--sharks:#2bb3bd;--giants:#fd7a45;--athletics:#3aa874;--raiders:#a5acaf;
+  --mets:#ff7a3d;--nygiants:#6f8fe0;--knicks:#f58426;--yankees:#8fa3c7;--jets:#4fb37a;
   --shadow:none;--field:#24612d;--zone:#f1efe9;
 }}
 :root[data-theme="dark"]{
@@ -32,6 +34,7 @@
   --accent:#ff7a50;--live:#ff4d61;--good:#4cc27e;--warn:#f5a524;--focus:#7aa2ff;
   --cavs:#c23a6e;--browns:#ff6a33;--guardians:#4d8fc4;
   --warriors:#5b8ee6;--niners:#e0484d;--sharks:#2bb3bd;--giants:#fd7a45;--athletics:#3aa874;--raiders:#a5acaf;
+  --mets:#ff7a3d;--nygiants:#6f8fe0;--knicks:#f58426;--yankees:#8fa3c7;--jets:#4fb37a;
   --shadow:none;--field:#24612d;--zone:#f1efe9;
 }
 *{box-sizing:border-box}
@@ -318,6 +321,16 @@ const VIEWS = {
     { key:'sharks',    label:'Sharks',    league:'nhl', sport:'hockey',     abbr:'sj',  id:'18', color:'var(--sharks)' },
     { key:'athletics', label:'Athletics', league:'mlb', sport:'baseball',   abbr:'ath', id:'11', color:'var(--athletics)' },
     { key:'raiders',   label:'Raiders',   league:'nfl', sport:'football',   abbr:'lv',  id:'13', color:'var(--raiders)' },
+  ]},
+  nyccool: { name:'NYC Cool', local:'New York', news:true, teams:[
+    { key:'mets',      label:'Mets',      league:'mlb', sport:'baseball',   abbr:'nym', id:'21', color:'var(--mets)' },
+    { key:'nygiants',  label:'Giants',    league:'nfl', sport:'football',   abbr:'nyg', id:'19', color:'var(--nygiants)' },
+    { key:'knicks',    label:'Knicks',    league:'nba', sport:'basketball', abbr:'ny',  id:'18', color:'var(--knicks)' },
+  ]},
+  nyclame: { name:'NYC Lame', local:'New York', news:true, teams:[
+    { key:'yankees',   label:'Yankees',   league:'mlb', sport:'baseball',   abbr:'nyy', id:'10', color:'var(--yankees)' },
+    { key:'jets',      label:'Jets',      league:'nfl', sport:'football',   abbr:'nyj', id:'20', color:'var(--jets)' },
+    { key:'knicks',    label:'Knicks',    league:'nba', sport:'basketball', abbr:'ny',  id:'18', color:'var(--knicks)' },
   ]},
 };
 const VIEW_KEY = Object.hasOwn(VIEWS, new URLSearchParams(location.search).get('view')) ? new URLSearchParams(location.search).get('view') : 'cleveland';

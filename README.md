@@ -1,6 +1,6 @@
 # My Sports
 
-A personal scores app for your teams, with two regions: Cleveland (Cavaliers, Browns, Guardians) and the Bay Area (Warriors, 49ers, Giants, Sharks, Athletics, Raiders).
+A personal scores app for your teams, grouped by region: Cleveland (Cavaliers, Browns, Guardians), the Bay Area (Warriors, 49ers, Giants, Sharks, Athletics, Raiders), NYC Cool (Mets, Giants, Knicks) and NYC Lame (Yankees, Jets, Knicks).
 
 Open it at **https://charliehartel.github.io/my-sports/**.
 
@@ -12,7 +12,7 @@ It's a single static page (`index.html`) that reads ESPN's public scoreboard dat
 
 Hockey is supported too: the Bay Area view has the Sharks, and team and game pages work for any NHL team (for example `#/t/nhl/18`). Hockey pages have standings with a wild-card view, a W-L-OTL record, period and OT/shootout line scores, and a shot chart during live games.
 
-**Regions:** pick Cleveland or Bay Area from the picker next to "My Sports" in the header. Cleveland is the default; the Bay Area opens `?view=bayarea` (shortcut: [`bayarea/`](https://charliehartel.github.io/my-sports/bayarea/)). Each region remembers its own team filter and shows news for its own teams.
+**Regions:** pick Cleveland, Bay Area, NYC Cool or NYC Lame from the picker next to "My Sports" in the header. Cleveland is the default; the others open `?view=bayarea`, `?view=nyccool` and `?view=nyclame` (shortcut: [`bayarea/`](https://charliehartel.github.io/my-sports/bayarea/)). Each region remembers its own team filter and shows news for its own teams.
 
 **News:** a scheduled GitHub Actions job (`.github/workflows/news.yml`, `scripts/news.mjs`) collects team news every 20 minutes from a fixed list of trusted outlets (ESPN, The Athletic, cleveland.com, NBC Sports Bay Area, team sites, local TV and more) into the `news-data` branch, which the app reads.
 

@@ -22,6 +22,12 @@ export const TEAMS = {
   sharks:    { league: 'nhl', sport: 'hockey',     espnId: '18', words: ['sharks'], paths: ['sharks', 'san-jose-sharks'] },
   athletics: { league: 'mlb', sport: 'baseball',   espnId: '11', words: ['athletics', "a's"], paths: ['athletics', 'oakland-athletics', 'as'] },
   raiders:   { league: 'nfl', sport: 'football',   espnId: '13', words: ['raiders'], paths: ['raiders', 'las-vegas-raiders'] },
+  // New York
+  mets:      { league: 'mlb', sport: 'baseball',   espnId: '21', words: ['mets'], paths: ['mets', 'new-york-mets'] },
+  nygiants:  { league: 'nfl', sport: 'football',   espnId: '19', words: ['ny giants', 'new york giants', 'giants'], paths: ['new-york-giants', 'ny-giants'] },
+  knicks:    { league: 'nba', sport: 'basketball', espnId: '18', words: ['knicks'], paths: ['knicks', 'new-york-knicks'] },
+  yankees:   { league: 'mlb', sport: 'baseball',   espnId: '10', words: ['yankees', 'yanks'], paths: ['yankees', 'new-york-yankees'] },
+  jets:      { league: 'nfl', sport: 'football',   espnId: '20', words: ['jets'], paths: ['jets', 'new-york-jets'] },
 };
 
 // Each RSS source lists candidate feed addresses per team; the first one that returns items is used.
@@ -49,17 +55,24 @@ export const RSS_SOURCES = [
       sharks:    ['https://www.nytimes.com/athletic/rss/nhl/sharks/'],
       athletics: ['https://www.nytimes.com/athletic/rss/mlb/athletics/'],
       raiders:   ['https://www.nytimes.com/athletic/rss/nfl/raiders/'],
+      mets:      ['https://www.nytimes.com/athletic/rss/mlb/mets/'],
+      nygiants:  ['https://www.nytimes.com/athletic/rss/nfl/giants/', 'https://www.nytimes.com/athletic/rss/nfl/ny-giants/'],
+      knicks:    ['https://www.nytimes.com/athletic/rss/nba/knicks/'],
+      yankees:   ['https://www.nytimes.com/athletic/rss/mlb/yankees/'],
+      jets:      ['https://www.nytimes.com/athletic/rss/nfl/jets/'],
     },
   },
   {
     // Official team news: everything is about the team, so only promos are dropped.
-    id: 'team', name: 'Team site', domains: ['clevelandbrowns.com', '49ers.com', 'raiders.com'], scope: 'official',
-    names: { browns: 'ClevelandBrowns.com', niners: '49ers.com', raiders: 'Raiders.com' },
+    id: 'team', name: 'Team site', domains: ['clevelandbrowns.com', '49ers.com', 'raiders.com', 'giants.com', 'newyorkjets.com'], scope: 'official',
+    names: { browns: 'ClevelandBrowns.com', niners: '49ers.com', raiders: 'Raiders.com', nygiants: 'Giants.com', jets: 'NewYorkJets.com' },
     // NBA.com (Cavs) refuses these requests (HTTP 403), so there's no Cavs team-site feed.
     feeds: {
       browns:    ['https://www.clevelandbrowns.com/rss/news', 'https://www.clevelandbrowns.com/news/rss'],
       niners:    ['https://www.49ers.com/rss/news'],
       raiders:   ['https://www.raiders.com/rss/news'],
+      nygiants:  ['https://www.giants.com/rss/news'],
+      jets:      ['https://www.newyorkjets.com/rss/news'],
     },
   },
   {
@@ -69,6 +82,8 @@ export const RSS_SOURCES = [
       guardians: ['https://www.mlb.com/guardians/feeds/news/rss.xml'],
       giants:    ['https://www.mlb.com/giants/feeds/news/rss.xml'],
       athletics: ['https://www.mlb.com/athletics/feeds/news/rss.xml'],
+      mets:      ['https://www.mlb.com/mets/feeds/news/rss.xml'],
+      yankees:   ['https://www.mlb.com/yankees/feeds/news/rss.xml'],
     },
   },
   {
@@ -110,6 +125,37 @@ export const RSS_SOURCES = [
   {
     id: 'rj', name: 'Las Vegas Review-Journal', domains: ['reviewjournal.com'],
     feeds: { raiders: ['https://www.reviewjournal.com/sports/raiders/feed/'] },
+  },
+  // ---- New York outlets ----
+  {
+    id: 'nypost', name: 'New York Post', domains: ['nypost.com'], scope: 'team-feed',
+    feeds: {
+      mets:     ['https://nypost.com/mets/feed/'],
+      nygiants: ['https://nypost.com/giants/feed/'],
+      knicks:   ['https://nypost.com/knicks/feed/'],
+      yankees:  ['https://nypost.com/yankees/feed/'],
+      jets:     ['https://nypost.com/jets/feed/'],
+    },
+  },
+  {
+    id: 'nydn', name: 'NY Daily News', domains: ['nydailynews.com'], scope: 'team-feed',
+    feeds: {
+      mets:     ['https://www.nydailynews.com/sports/baseball/mets/feed/'],
+      nygiants: ['https://www.nydailynews.com/sports/football/giants/feed/'],
+      knicks:   ['https://www.nydailynews.com/sports/basketball/knicks/feed/'],
+      yankees:  ['https://www.nydailynews.com/sports/baseball/yankees/feed/'],
+      jets:     ['https://www.nydailynews.com/sports/football/jets/feed/'],
+    },
+  },
+  {
+    id: 'sny', name: 'SNY', domains: ['sny.tv'], scope: 'team-feed',
+    feeds: {
+      mets:     ['https://sny.tv/feeds/mets', 'https://sny.tv/mets/rss'],
+      nygiants: ['https://sny.tv/feeds/giants', 'https://sny.tv/giants/rss'],
+      knicks:   ['https://sny.tv/feeds/knicks', 'https://sny.tv/knicks/rss'],
+      yankees:  ['https://sny.tv/feeds/yankees', 'https://sny.tv/yankees/rss'],
+      jets:     ['https://sny.tv/feeds/jets', 'https://sny.tv/jets/rss'],
+    },
   },
   // Threads (team accounts) will go here once the Meta app is approved for profile discovery.
 ];

@@ -26,7 +26,7 @@ test('the header title switches views', async ({ page }) => {
   await page.goto('/#/');
   await ready(page, '.qteam');
   await expect(page.locator('#view')).toHaveValue('cleveland');
-  await expect(page.locator('#view option')).toHaveText(['Cleveland', 'Bay Area']);
+  await expect(page.locator('#view option')).toHaveText(['Cleveland', 'Bay Area', 'NYC Cool', 'NYC Lame']);
   await page.selectOption('#view', 'bayarea');
   await expect(page).toHaveURL(/\?view=bayarea#\/$/);
   await ready(page, '.qteam');
@@ -80,4 +80,24 @@ test('box score lists my team first, even when it is the home team', async ({ pa
   await page.locator('.srow').filter({ has: page.locator('.wl') }).filter({ has: page.locator('.vs', { hasText: /^vs$/ }) }).first().click();
   await ready(page, '.score-hero');
   await expect(page.locator('.panel .box .teamhead').first()).toContainText('San Jose Sharks');
+});
+
+test('NYC Cool and NYC Lame groups', async ({ page }) => {
+  await page.goto('/#/');
+  await ready(page, '.qteam');
+  await page.selectOption('#view', 'nyccool');
+  await expect(page).toHaveURL(/\?view=nyccool#\/$/);
+  await ready(page, '.qteam');
+  await expect(page).toHaveTitle('My Sports · NYC Cool');
+  await expect(page.locator('.qteam .qname')).toHaveText(['Mets', 'Giants', 'Knicks']);
+  // the football Giants, not San Francisco's baseball Giants
+  await page.locator('.qteam', { hasText: 'Giants' }).click();
+  await ready(page, '.team-hero');
+  await expect(page.locator('.team-hero')).toContainText('New York Giants');
+  await expect(page.locator('.tab')).toHaveText(['Schedule', 'Team Stats', 'Standings', 'News']);
+  await page.selectOption('#view', 'nyclame');
+  await expect(page).toHaveURL(/\?view=nyclame#\/$/);
+  await ready(page, '.qteam');
+  await expect(page.locator('.qteam .qname')).toHaveText(['Yankees', 'Jets', 'Knicks']);
+  await expect(page.locator('#view')).toHaveValue('nyclame');
 });
