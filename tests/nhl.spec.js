@@ -61,6 +61,11 @@ test.describe('San Jose Sharks (NHL)', () => {
     await ready(page, '.ptable');
     expect(await page.locator('.tile').count()).toBeGreaterThanOrEqual(8);
     await expect(page.locator('.tile .tl').first()).toHaveText('Goals / game');
+    // every tile ranked among NHL teams, power play and penalty kill included, no PDO
+    await expect(page.locator('.tile.ranked .rk')).toHaveCount(11, { timeout: 60_000 });
+    for (const r of await page.locator('.tile.ranked .rk').allTextContents()) expect(r).toMatch(/^\d+(st|nd|rd|th)$/);
+    await expect(page.locator('.tile .tl')).toContainText(['Power play %', 'Penalty kill %']);
+    await expect(page.locator('.tiles')).not.toContainText('PDO');
     await expect(page.locator('[data-cat]')).toHaveText(['Skaters', 'Goalies']);
     await expect(page.locator('.ptable thead th').nth(4)).toContainText('PTS'); // Player, GP, G, A, PTS
     await page.locator('[data-cat="goalkeeping"]').click();
