@@ -484,7 +484,7 @@ function bayArea(league, date, bcs, home, away){
   if (opts.length) return opts.sort((a, b) => b.lvl - a.lvl)[0];
   if (!bcs.some(b => !isPackage(league, b.name))) return null; // TV not announced yet
   return { lvl:0, label:'Not on Bay Area TV', sub:BAY.outOfMarket[league],
-    why:`Only on ${teamOf(league) ? VIEW.local : 'the teams\' local'} channels. Out of market, you can stream it on ${BAY.outOfMarket[league]}.` };
+    why:`Only on ${[home, away].some(x => x && TEAMS.some(t => t.league === league && t.abbr.toUpperCase() === String(x.abbr || '').toUpperCase())) ? VIEW.local : 'the teams\' local'} channels. Out of market, you can stream it on ${BAY.outOfMarket[league]}.` };
 }
 // For a regional NFL game: if the 49ers are on the same network at the same time, Bay Area TV shows the 49ers.
 const sfCache = {};
