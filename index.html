@@ -366,6 +366,7 @@ const BAY = {
   cable: /^(ESPN|ESPN2|ESPNU|ESPNEWS|ABC\/ESPN|TNT|TBS|truTV|FS1|FS2|NFL Net(work)?|NFLN|NBA TV|MLB Net(work)?|MLBN|NHL Net(work)?|NHLN|NBCSN|USA Net(work)?)$/i,
   stream: /prime|peacock|netflix|apple tv|espn\+|espn unl|youtube|^max$|paramount|nbc sports app|amazon/i,
   packages: /mlb\.tv|league pass|sunday ticket|nfl\+/i,      // out-of-market packages, not Bay Area TV
+  alias: { 'NBC Sports BA':'NBC Sports Bay Area', 'NBCS-BA':'NBC Sports Bay Area', 'NBCS-CA':'NBC Sports California' }, // ESPN's short names
   outOfMarket: { nba:'NBA League Pass', mlb:'MLB.TV', nfl:'NFL Sunday Ticket', nhl:'ESPN+' },
 };
 // NHL games listed nationally on ESPN+ are its out-of-market package (blacked out in the home teams' markets), not national TV.
@@ -394,7 +395,7 @@ function bayArea(league, date, bcs, home, away){
       else if (BAY.cable.test(b.name)) opts.push({ lvl:2, label:b.name, why:'National cable channel, available in the Bay Area.' });
       else opts.push({ lvl:1, label:`Maybe · ${b.name}`, why:`Listed nationally on ${b.name}, which I don't recognize as a Bay Area channel.` });
     } else if (baySide && b.market === baySide) {
-      opts.push({ lvl:2, label:b.name, why:`The ${bayTeam.short} broadcast airs in the Bay Area.` });
+      opts.push({ lvl:2, label:BAY.alias[b.name] || b.name, why:`The ${bayTeam.short} broadcast airs in the Bay Area.` });
     }
   }
   if (baySide && !opts.some(o => o.lvl === 2)) {
@@ -1433,7 +1434,8 @@ function srow(g){
   let res;
   if (g.state === 'post' && me.score != null && opp.score != null) {
     const w = me.winner ? 'W' : opp.winner ? 'L' : 'T';
-    res = `<span class="wl ${w}">${w}</span> <span class="num">${esc(me.score)}–${esc(opp.score)}</span>`;
+    const extra = tview.league === 'nhl' ? (/SO/.test(g.detail) ? ' SO' : /OT/.test(g.detail) ? ' OT' : '') : '';
+    res = `<span class="wl ${w}">${w}</span> <span class="num">${esc(me.score)}–${esc(opp.score)}${extra}</span>`;
   } else if (g.state === 'post') res = `<span class="small">${esc(g.detail || 'Final')}</span>`;
   else if (g.state === 'in') res = `<span class="status-live">${esc(me.score ?? 0)}–${esc(opp.score ?? 0)} · ${esc(g.detail)}</span>`;
   else res = `<span class="small">${esc(fmtTime(g.date))}</span>`;
@@ -1449,7 +1451,11 @@ function renderTeamSchedule(){
   const live = gs.filter(g => g.state === 'in');
   const up = gs.filter(g => g.state === 'pre');
   const past = gs.filter(g => g.state === 'post').reverse();
-  const w = past.filter(g => { const me = String(g.home.id) === String(tview.info.id) ? g.home : g.away; return me.winner; }).length;
+  const won = g => (String(g.home.id) === String(tview.info.id) ? g.home : g.away).winner;
+  const w = past.filter(won).length;
+  // NHL: overtime and shootout losses are their own column (W-L-OTL)
+  const otl = tview.league === 'nhl' ? past.filter(g => !won(g) && /OT|SO/.test(g.detail)).length : 0;
+  const recText = tview.league === 'nhl' ? `${w}–${past.length - w - otl}–${otl}` : `${w}–${past.length - w}`;
   const SHOW = 10;
   const sec = (key, title, list, empty) => {
     const all = tview.showAll?.[key];
@@ -1458,7 +1464,7 @@ function renderTeamSchedule(){
       (list.length ? `<div class="slist">${shown.map(srow).join('')}</div>` : `<div class="empty">${esc(empty)}</div>`) +
       (list.length > SHOW ? `<button class="iconbtn more" data-showall="${key}">${all ? 'Show fewer' : `Show all ${list.length}`}</button>` : '') + `</section>`;
   };
-  return `<div class="toolbar">${seasonSelect(tview.schedCurrent, tview.season)}${past.length ? `<span class="small">${w}–${past.length - w} in completed games</span>` : ''}</div>
+  return `<div class="toolbar">${seasonSelect(tview.schedCurrent, tview.season)}${past.length ? `<span class="small">${recText} in completed games</span>` : ''}</div>
     ${live.length ? sec('live', 'Live now', live, '') : ''}
     <div class="schedcols">${sec('up', 'Upcoming', up, 'No upcoming games this season.')}${sec('past', 'Results', past, 'No completed games this season yet.')}</div>`;
 }
