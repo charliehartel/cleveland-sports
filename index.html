@@ -1576,12 +1576,13 @@ function nhlShotTable(g){
   if (g.state === 'pre') return '';
   const plays = nhlRegPlays(g).filter(p => /^(Shot|Goal)$/.test(p.type?.text || ''));
   if (!plays.length) return '';
-  const n = Math.max(3, ...plays.map(p => p.period?.number || 0));
+  // same periods as the line score: those played so far (OT only if it happened)
+  const n = Math.max(g.state === 'in' ? Math.min(g.comp.status?.period || 1, nhlPlayoffs() ? 99 : 4) : 3, ...plays.map(p => p.period?.number || 0));
   const cols = Array.from({ length:n }, (_, i) => nhlPerLabel(i + 1));
   const row = c => {
     const mine = plays.filter(p => String(p.team?.id) === String(c?.team?.id));
     const by = cols.map((_, i) => mine.filter(p => p.period?.number === i + 1).length);
-    return `<tr><td>${esc(c?.team?.abbreviation)}</td>${by.map((v, i) => `<td>${i < (g.comp.status?.period || n) ? v : ''}</td>`).join('')}<td><b>${mine.length}</b></td></tr>`;
+    return `<tr><td>${esc(c?.team?.abbreviation)}</td>${by.map(v => `<td>${v}</td>`).join('')}<td><b>${mine.length}</b></td></tr>`;
   };
   return `<div class="tablewrap line"><table><thead><tr><th>Shots</th>${cols.map(c => `<th>${esc(c)}</th>`).join('')}<th>T</th></tr></thead><tbody>${row(g.away)}${row(g.home)}</tbody></table></div>`;
 }
@@ -1662,7 +1663,7 @@ function nhlInsights(g){
 function nhlToiOutliers(g, elapsed){
   if (!view.nx?.playersDone) return '';
   const full = g.state === 'post', gameMin = full ? Math.max(60, elapsed) : elapsed;
-  if (gameMin < 15) return '';
+  if (gameMin < 20) return ''; // too early to tell
   const rows = [];
   for (const p of orderedPlayers(g)) {
     const tid = String(p.team?.id);
@@ -1677,14 +1678,14 @@ function nhlToiOutliers(g, elapsed){
         if (now == null || avg == null || avg < 4) continue;
         const pace = full ? now : now / gameMin * 60;
         const diff = pace - avg;
-        if (Math.abs(diff) < Math.max(3, avg * .2)) continue;
+        if (Math.abs(diff) < Math.max(3.5, avg * .25)) continue; // at least 3.5 minutes and 25% off his average
         rows.push({ up:diff > 0, diff, text:`${a.athlete?.shortName} (${p.team?.abbreviation}): ${full ? `played ${mmss(now)}` : `${mmss(now)} so far, on pace for ${mmss(pace)}`} vs ${mmss(avg)} a game this season` });
       }
     }
   }
   if (!rows.length) return '';
   rows.sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
-  return `<div class="grp-title">Ice time well above or below normal</div><ul class="pvl">${rows.slice(0, 8).map(r =>
+  return `<div class="grp-title">Ice time well above or below normal</div><ul class="pvl">${rows.slice(0, 6).map(r =>
     `<li><div class="top"><span class="tagx ${r.up ? 'hot' : 'cold'}">${r.up ? 'More' : 'Less'}</span><span>${esc(r.text)}</span></div></li>`).join('')}</ul>`;
 }
 // Lines: sample who is on the ice at faceoffs (ESPN's core play-by-play has each play's personnel).
