@@ -268,6 +268,20 @@ details.acc .tablewrap{max-width:620px}
 .sortbtn{background:none;border:none;padding:0;font:inherit;color:inherit;cursor:pointer;white-space:nowrap}
 .sortbtn.on{color:var(--text)}
 .ptable td.sorted{background:color-mix(in srgb,var(--accent) 7%,var(--surface));font-weight:700}
+/* NHL preview lists: goalies, out tonight, leaders, streaks, season series */
+.pvl{list-style:none;margin:0;padding:0}
+.pvl li{padding:8px 0;border-top:1px solid var(--border)}
+.pvl li:first-child{border-top:0}
+.pvl .top{display:flex;gap:6px 8px;align-items:baseline;flex-wrap:wrap}
+.pvl .nm{font-weight:600}
+.pvl .meta{font-size:13px;color:var(--muted);margin-top:2px}
+.pvl a{text-decoration:none}
+.tagx{font-size:11px;font-weight:700;padding:1px 7px;border-radius:999px;background:var(--surface-2);color:var(--muted);white-space:nowrap}
+.tagx.out{background:color-mix(in srgb,var(--live) 14%,transparent);color:var(--live)}
+.tagx.hot{background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent)}
+.tagx.cold{background:color-mix(in srgb,var(--focus) 14%,transparent);color:var(--focus)}
+.tagx.ok{background:color-mix(in srgb,var(--good) 14%,transparent);color:var(--good)}
+.lrk{font-size:12px;color:var(--muted);white-space:nowrap}
 </style>
 </head>
 <body>
@@ -587,7 +601,7 @@ setInterval(tickLive, 1000);
 async function showGame(league, id){
   const sameGame = view.league === league && view.id === id;
   if (!sameGame) Object.assign(view, { league, id, tab:null, s:null, sit:null, open:new Set(), period:'all', shotTeam:'all',
-    sig:null, seen:null, fresh:new Set(), fetchedAt:null, espnAt:null, failures:0 });
+    sig:null, seen:null, fresh:new Set(), fetchedAt:null, espnAt:null, failures:0, nx:null });
   if (document.hidden && view.s) { schedule(() => showGame(league, id), LIVE_MS); return; } // paused while the app is in the background
   if (!view.s) $('#app').innerHTML = `<a class="back" href="#/">← All games</a><div class="loading">Loading game…</div>`;
   const sport = SPORT[league];
@@ -620,6 +634,7 @@ async function showGame(league, id){
     view.espnAt = s.meta?.lastUpdatedAt ? new Date(s.meta.lastUpdatedAt) : null;
     if (!view.tab) view.tab = state === 'in' ? 'gamecast' : state === 'post' ? 'box' : 'preview';
     if (changed || !$('#app .score-hero')) renderGame();
+    if (league === 'nhl') loadNhlExtra(gameCtx(), state); // scratches, player stats, ranks, streaks (fills in as it arrives)
     view.fresh = new Set(); // highlight new plays once, not again on tab switches
     tickLive();
     setUpdated(state === 'in' ? ' · live' : '');
@@ -813,7 +828,8 @@ function renderBox(g){
     }).join('');
     return `<div class="box"><div class="teamhead">${teamLink(g.league, p.team, img(logoOf(p.team), 'logo', p.team?.abbreviation) + esc(p.team?.displayName))}</div>${groups}</div>`;
   });
-  return teams.join('') + (g.league === 'nba' ? `<div class="note">TS% (true shooting) and eFG% (effective field goal) are calculated from the box score.</div>` : '');
+  return teams.join('') + (g.league === 'nba' ? `<div class="note">TS% (true shooting) and eFG% (effective field goal) are calculated from the box score.</div>` : '')
+    + (g.league === 'nhl' ? nhlScratchNote(g) : '');
 }
 
 /* ---------- Team stats ---------- */
@@ -1260,6 +1276,7 @@ function nhlShots(g){
 
 /* ---------- Preview (upcoming) ---------- */
 function renderPreview(g){
+  if (g.league === 'nhl') return nhlPreview(g);
   const s = g.s, out = [];
   const date = new Date(g.comp.date);
   const odds = s.pickcenter?.[0];
@@ -1277,6 +1294,235 @@ function renderPreview(g){
   if (ser?.summary) out.push(`<div class="box"><h3>Season series</h3><div>${esc(ser.summary)}</div></div>`);
   out.push(`<div class="note">Box score, gamecast and play-by-play appear here once the game starts. This page checks for the start every minute in the last hour before the game.</div>`);
   return out.join('');
+}
+
+/* ---------- NHL preview ---------- */
+// Loaded after the game summary and filled in as it arrives:
+//  - game rosters from ESPN's core API: who is scratched (teams announce this about an hour before puck drop)
+//  - each team's player stats: numbers for injured and scratched players, and who to check for streaks
+//  - league ranks for the season leaders (core API)
+//  - recent game logs for each team's top scorers and goalies: hot and cold streaks
+// ESPN doesn't name the starting goalie ahead of time, so the goalie list shows each one's last start instead.
+const NHL_CORE = 'https://sports.core.api.espn.com/v2/sports/hockey/leagues/nhl';
+const NHL_WEB = 'https://site.web.api.espn.com/apis/common/v3/sports/hockey/nhl';
+const nhlSides = g => [g.away, g.home].filter(Boolean).map(c => ({ id:String(c.team?.id), abbr:c.team?.abbreviation, name:c.team?.displayName, team:c.team }));
+async function loadNhlExtra(g, state){
+  const id = view.id, season = g.s.header?.season?.year, stype = g.s.header?.season?.type || 2;
+  const x = view.nx ||= { players:{}, roster:{}, ranks:{}, logs:{}, rosterAt:0, started:false, done:false };
+  const alive = () => view.id === id && view.league === 'nhl';
+  const redraw = () => { if (alive() && (view.tab === 'preview' || view.tab === 'box')) renderGame(); };
+  const sides = nhlSides(g);
+  // Rosters: before the game, look again every 5 minutes for newly announced scratches; after that once is enough.
+  if (!x.rosterAt || (state === 'pre' && Date.now() - x.rosterAt > 5*60e3)) {
+    x.rosterAt = Date.now();
+    await Promise.all(sides.map(async t => {
+      try { x.roster[t.id] = (await getJSON(`${NHL_CORE}/events/${id}/competitions/${id}/competitors/${t.id}/roster`)).entries || []; } catch {}
+    }));
+    redraw();
+  }
+  if (state !== 'pre' || x.started) return;
+  x.started = true;
+  await Promise.all(sides.map(async t => {
+    try {
+      const d = await getJSON(`${API}/hockey/nhl/teams/${t.id}/athletes/statistics?seasontype=${stype}${season ? `&season=${season}` : ''}`);
+      x.players[t.id] = Object.fromEntries((d.results || []).map(c => [c.name, playerRows(c)]));
+    } catch { x.players[t.id] = {}; }
+  }));
+  if (!alive()) return;
+  redraw();
+  const leaderIds = [...new Set((g.s.leaders || []).flatMap(t => (t.leaders || []).map(c => c.leaders?.[0]?.athlete?.id)).filter(Boolean))];
+  const goalieIds = ['awayTeam', 'homeTeam'].flatMap(k => (g.s.goalies?.[k]?.athletes || []).map(a => a.id));
+  const scorers = sides.flatMap(t => nhlSkaters(t.id).slice(0, 8).map(p => p.id));
+  await Promise.all([
+    ...leaderIds.map(async aid => {
+      try {
+        const d = await getJSON(`${NHL_CORE}/seasons/${season}/types/${stype}/athletes/${aid}/statistics`);
+        const r = {};
+        for (const c of d.splits?.categories || []) for (const st of c.stats || []) if (st.rankDisplayValue && !(st.name in r)) r[st.name] = st.rankDisplayValue;
+        x.ranks[aid] = r;
+      } catch {}
+    }),
+    ...[...new Set([...scorers, ...goalieIds])].map(async aid => {
+      try { x.logs[aid] = nhlGameLog(await getJSON(`${NHL_WEB}/athletes/${aid}/gamelog`), new Date(g.comp.date)); } catch {}
+    }),
+  ]);
+  x.done = true;
+  redraw();
+}
+// A player's games this season, newest first, each with its stats by name. Games on or after this one are left out.
+function nhlGameLog(d, before){
+  const names = d.names || [];
+  return (d.seasonTypes?.[0]?.categories || []).flatMap(c => c.events || []).map(e => {
+    const m = d.events?.[e.eventId] || {};
+    return { id:e.eventId, date:new Date(m.gameDate), result:m.gameResult, opp:m.opponent?.abbreviation, at:m.atVs,
+             st:Object.fromEntries(names.map((n, i) => [n, e.stats?.[i]])) };
+  }).filter(e => !isNaN(e.date) && e.date < before).sort((a, b) => b.date - a.date);
+}
+const nhlSkaters = tid => [...(view.nx?.players[tid]?.team || [])].sort((a, b) => (b.vals.points?.value ?? 0) - (a.vals.points?.value ?? 0));
+function nhlPlayer(tid, aid){
+  const P = view.nx?.players[tid] || {};
+  const sk = nhlSkaters(tid), i = sk.findIndex(p => String(p.id) === String(aid));
+  if (i >= 0) return { p:sk[i], goalie:false, teamRank:i + 1 };
+  const gk = (P.goalkeeping || []).find(p => String(p.id) === String(aid));
+  return gk ? { p:gk, goalie:true } : null;
+}
+const sv = (p, k) => p?.vals[k]?.displayValue ?? '';
+function nhlStatLine(tid, aid){
+  const f = nhlPlayer(tid, aid);
+  if (!f) return view.nx?.players[tid] ? 'No games this season' : '';
+  const p = f.p;
+  if (f.goalie) return `${sv(p, 'games')} GP · ${sv(p, 'wins')}-${sv(p, 'losses')}-${sv(p, 'overtimeLosses') || 0} · ${sv(p, 'savePct')} SV% · ${sv(p, 'avgGoalsAgainst')} GAA`;
+  const pts = Number(sv(p, 'points')) || 0;
+  return `${sv(p, 'games')} GP · ${sv(p, 'goals')} G, ${sv(p, 'assists')} A, ${pts} PTS${pts ? ` · ${ordinal(f.teamRank)} on team in points` : ''}${sv(p, 'timeOnIcePerGame') ? ` · ${sv(p, 'timeOnIcePerGame')} TOI` : ''}`;
+}
+const rankText = r => r ? r.replace(/^Tied-/, 'T-') + ' in NHL' : '';
+const nhlInjuries = tid => ((view.s.injuries || []).find(t => String(t.team?.id) === tid)?.injuries || []);
+const nhlScratches = tid => (view.nx?.roster[tid] || []).filter(e => e.scratched);
+function nhlOutIds(tid){ return new Set([...nhlInjuries(tid).map(i => String(i.athlete?.id)), ...nhlScratches(tid).map(e => String(e.playerId))]); }
+const nhlName = (tid, aid, fallback) => nhlPlayer(tid, aid)?.p?.name || fallback || '';
+const nhlPos = (tid, aid, fallback) => fallback || nhlPlayer(tid, aid)?.p?.pos || '';
+const shortDate = d => d.toLocaleDateString([], { month:'short', day:'numeric' });
+const twoCols = (g, fn) => `<div class="two">${nhlSides(g).map(t => `<div><div class="teamhead" style="font-size:14px">${img(logoOf(t.team), 'logo')}${esc(t.name)}</div>${fn(t)}</div>`).join('')}</div>`;
+
+function nhlGoalies(g){
+  const keyOf = t => String(g.home?.team?.id) === t.id ? 'homeTeam' : 'awayTeam';
+  const x = view.nx;
+  const body = t => {
+    const list = [...(g.s.goalies?.[keyOf(t)]?.athletes || [])];
+    if (!list.length) return `<div class="empty">No goalies listed yet.</div>`;
+    const stat = (a, n) => (a.statistics || []).find(s => s.name === n)?.displayValue;
+    list.sort((a, b) => (Number(stat(b, 'games')) || 0) - (Number(stat(a, 'games')) || 0));
+    const roster = x?.roster[t.id] || [];
+    return `<ul class="pvl">${list.map(a => {
+      const r = roster.find(e => String(e.playerId) === String(a.id));
+      const tag = r?.starter ? '<span class="tagx ok">Starting</span>' : r?.scratched ? '<span class="tagx out">Scratched</span>' : '';
+      const starts = (x?.logs[a.id] || []).filter(e => e.st.gameStarted === '1');
+      const last = starts[0];
+      const rest = last ? Math.round((new Date(g.comp.date) - last.date) / 864e5) : null;
+      const lastTxt = last ? `Last start ${shortDate(last.date)} ${last.at === '@' ? '@' : 'vs'} ${last.opp} (${last.result || '–'}, ${last.st.saves}/${last.st.shotsAgainst} saves)${rest != null ? ` · ${rest} day${rest === 1 ? '' : 's'} before this game` : ''}` : x?.done ? 'No starts this season' : '';
+      return `<li><div class="top"><span class="nm">${esc(a.displayName)}</span>${tag}</div>
+        <div class="meta">${esc(`${stat(a, 'games') || 0} GP · ${stat(a, 'wins') || 0}-${stat(a, 'losses') || 0}-${stat(a, 'overtimeLosses') || 0} · ${stat(a, 'savePct') || '–'} SV% · ${stat(a, 'avgGoalsAgainst') || '–'} GAA · ${stat(a, 'shutouts') || 0} SO`)}</div>
+        ${lastTxt ? `<div class="meta">${esc(lastTxt)}</div>` : ''}</li>`;
+    }).join('')}</ul>`;
+  };
+  const anyStarter = Object.values(x?.roster || {}).some(r => r.some(e => e.starter));
+  return `<div class="box"><h3>Goalies</h3>${twoCols(g, body)}
+    <div class="note">${anyStarter ? 'Starters as listed by ESPN.' : "ESPN doesn't name the starting goalie before the game, so each goalie's last start is shown instead. The starter appears in the box score once the game begins."}</div></div>`;
+}
+function nhlOutTonight(g){
+  const x = view.nx;
+  const body = t => {
+    const inj = nhlInjuries(t.id).map(i => ({ id:String(i.athlete?.id), name:i.athlete?.displayName, pos:i.athlete?.position?.abbreviation,
+      tag:i.status || 'Injured', why:[i.details?.type, i.details?.detail].filter(Boolean).join(', '), back:i.details?.returnDate }));
+    const injIds = new Set(inj.map(i => i.id));
+    const scr = nhlScratches(t.id).filter(e => !injIds.has(String(e.playerId))).map(e => ({ id:String(e.playerId), name:nhlName(t.id, e.playerId, e.displayName), pos:nhlPos(t.id, e.playerId), tag:'Scratched', why:'' }));
+    // most important first: goalies, then by points
+    const weight = r => { const f = nhlPlayer(t.id, r.id); return f ? (f.goalie ? 1000 + (Number(sv(f.p, 'games')) || 0) : Number(sv(f.p, 'points')) || 0) : -1; };
+    const all = [...inj, ...scr].sort((a, b) => weight(b) - weight(a));
+    const note = x?.rosterAt && !nhlScratches(t.id).length ? `<div class="meta" style="margin-top:6px">Scratches not announced yet.</div>` : '';
+    if (!all.length) return `<div class="empty">Nobody listed.</div>${note}`;
+    return `<ul class="pvl">${all.map(r => {
+      const back = r.back ? new Date(r.back + 'T12:00:00') : null;
+      const meta = [r.why, back && !isNaN(back) ? `expected back ${shortDate(back)}` : ''].filter(Boolean).join(' · ');
+      return `<li><div class="top"><span class="nm">${esc(r.name)}</span><span class="small">${esc(r.pos || '')}</span><span class="tagx ${/day-to-day|questionable/i.test(r.tag) ? '' : 'out'}">${esc(r.tag)}</span></div>
+        ${meta ? `<div class="meta">${esc(meta)}</div>` : ''}<div class="meta">${esc(nhlStatLine(t.id, r.id) || 'Loading stats…')}</div></li>`;
+    }).join('')}</ul>${note}`;
+  };
+  return `<div class="box"><h3>Out tonight <span class="sub">injuries and scratches, with season stats</span></h3>${twoCols(g, body)}</div>`;
+}
+function nhlLeaders(g){
+  const L = g.s.leaders || [];
+  if (!L.length) return '';
+  const x = view.nx;
+  const body = t => {
+    const tl = L.find(z => String(z.team?.id) === t.id);
+    const out = nhlOutIds(t.id);
+    return `<ul class="pvl">${(tl?.leaders || []).map(c => {
+      const top = c.leaders?.[0]; if (!top) return '';
+      const aid = String(top.athlete?.id), rk = x?.ranks[aid]?.[c.name];
+      return `<li><div class="top"><span class="small">${esc(c.displayName)}</span></div>
+        <div class="top"><span class="nm">${esc(top.athlete?.displayName)}</span>${out.has(aid) ? '<span class="tagx out">Out</span>' : ''}<span style="margin-left:auto" class="num"><b>${esc(top.displayValue)}</b></span><span class="lrk">${esc(rankText(rk) || (x?.done ? '' : '…'))}</span></div></li>`;
+    }).join('')}</ul>`;
+  };
+  return `<div class="box"><h3>Season leaders <span class="sub">with league rank</span></h3>${twoCols(g, body)}</div>`;
+}
+function nhlStreaksFor(tid, aid, goalie, teamRank){
+  const evs = view.nx?.logs[aid];
+  if (!evs?.length) return [];
+  const run = (list, f) => { let n = 0; for (const e of list) { if (f(e)) n++; else break; } return n; };
+  const N = (e, k) => Number(e.st[k]) || 0;
+  const out = [];
+  if (goalie) {
+    const starts = evs.filter(e => e.st.gameStarted === '1');
+    const w = run(starts, e => e.result === 'W'), nw = run(starts, e => e.result !== 'W');
+    if (w >= 3) out.push({ hot:true, text:`won ${w} straight starts` });
+    if (nw >= 4) out.push({ hot:false, text:`winless in ${nw} straight starts` });
+    const l5 = starts.slice(0, 5);
+    if (l5.length === 5) {
+      const pct5 = l5.reduce((s, e) => s + N(e, 'saves'), 0) / Math.max(1, l5.reduce((s, e) => s + N(e, 'shotsAgainst'), 0));
+      if (pct5 >= .925) out.push({ hot:true, text:`${pct5.toFixed(3).replace(/^0/, '')} SV% over his last 5 starts` });
+      if (pct5 < .880) out.push({ hot:false, text:`${pct5.toFixed(3).replace(/^0/, '')} SV% over his last 5 starts` });
+    }
+    return out;
+  }
+  const sum = (n, k) => evs.slice(0, n).reduce((s, e) => s + N(e, k), 0);
+  const pts = run(evs, e => N(e, 'points') > 0), gl = run(evs, e => N(e, 'goals') > 0), as = run(evs, e => N(e, 'assists') > 0);
+  if (pts >= 3) out.push({ hot:true, text:`${pts}-game point streak (${sum(pts, 'goals')} G, ${sum(pts, 'assists')} A)` });
+  if (gl >= 2) out.push({ hot:true, text:`goals in ${gl} straight games (${sum(gl, 'goals')} total)` });
+  if (as >= 4 && as > pts - 1) out.push({ hot:true, text:`assists in ${as} straight games` });
+  if (teamRank <= 6) {
+    const dry = run(evs, e => N(e, 'points') === 0);
+    if (dry >= 4) out.push({ hot:false, text:`no points in ${dry} games` });
+    const gdry = run(evs, e => N(e, 'goals') === 0);
+    if (teamRank <= 3 && gdry >= 8 && dry < 4) out.push({ hot:false, text:`no goals in ${gdry} games` });
+  }
+  const l5 = evs.slice(0, 5);
+  if (!pts && l5.length === 5 && sum(5, 'points') >= 7) out.push({ hot:true, text:`${sum(5, 'points')} points in his last 5 games` });
+  return out;
+}
+function nhlStreaks(g){
+  const x = view.nx;
+  const keyOf = t => String(g.home?.team?.id) === t.id ? 'homeTeam' : 'awayTeam';
+  const body = t => {
+    if (!x?.done) return `<div class="empty">Checking recent games…</div>`;
+    const out = nhlOutIds(t.id);
+    const rows = [];
+    nhlSkaters(t.id).slice(0, 8).forEach((p, i) => { for (const s of nhlStreaksFor(t.id, p.id, false, i + 1)) rows.push({ name:p.name, pos:p.pos, id:String(p.id), ...s }); });
+    for (const a of g.s.goalies?.[keyOf(t)]?.athletes || []) for (const s of nhlStreaksFor(t.id, a.id, true)) rows.push({ name:a.displayName, pos:'G', id:String(a.id), ...s });
+    if (!rows.length) return `<div class="empty">No notable streaks.</div>`;
+    rows.sort((a, b) => b.hot - a.hot);
+    return `<ul class="pvl">${rows.map(r => `<li><div class="top"><span class="tagx ${r.hot ? 'hot' : 'cold'}">${r.hot ? 'Hot' : 'Cold'}</span><span class="nm">${esc(r.name)}</span><span class="small">${esc(r.pos || '')}</span>${out.has(r.id) ? '<span class="tagx out">Out</span>' : ''}</div><div class="meta">${esc(r.text)}</div></li>`).join('')}</ul>`;
+  };
+  return `<div class="box"><h3>Streaks <span class="sub">top scorers and goalies, games played</span></h3>${twoCols(g, body)}</div>`;
+}
+function nhlSeries(g){
+  const ser = (g.s.seasonseries || []).find(x => x.type === 'season') || g.s.seasonseries?.[0];
+  if (!ser) return '';
+  const rows = (ser.events || []).map(e => {
+    const cs = e.competitors || [], h = cs.find(c => c.homeAway === 'home'), a = cs.find(c => c.homeAway === 'away');
+    const d = new Date(e.date), st = e.statusType || {}, done = st.completed || e.status === 'post', here = String(e.id) === String(view.id);
+    const extra = /SO/.test(st.detail || '') ? ' SO' : /OT/.test(st.detail || '') ? ' OT' : '';
+    const score = done ? `${a?.team?.abbreviation} ${a?.score} – ${h?.team?.abbreviation} ${h?.score}${extra}` : `${a?.team?.abbreviation} @ ${h?.team?.abbreviation}`;
+    const when = done ? fmtDay(d) : `${fmtDay(d)}, ${fmtTime(d)}`;
+    const inner = `<div class="top"><span class="nm">${esc(score)}</span>${here ? '<span class="tagx hot">This game</span>' : done ? '' : '<span class="tagx">Upcoming</span>'}</div><div class="meta">${esc(when)}</div>`;
+    return `<li>${here || !done ? inner : `<a href="#/g/nhl/${esc(e.id)}">${inner}</a>`}</li>`;
+  }).join('');
+  return `<div class="box"><h3>Season series <span class="sub">${esc(ser.summary || '')}${ser.totalCompetitions ? ` · ${ser.totalCompetitions} meetings` : ''}</span></h3><ul class="pvl">${rows}</ul></div>`;
+}
+function nhlPreview(g){
+  const s = g.s, date = new Date(g.comp.date), odds = s.pickcenter?.[0];
+  return [`<div class="box"><h3>Game info</h3><dl class="kv">
+    <dt>Start</dt><dd>${esc(fmtDay(date))}, ${esc(fmtTime(date))}</dd>
+    ${s.gameInfo?.venue?.fullName ? `<dt>Venue</dt><dd>${esc(s.gameInfo.venue.fullName)}${s.gameInfo.venue.address?.city ? ', ' + esc(s.gameInfo.venue.address.city) : ''}</dd>` : ''}
+    ${bcOf(g.comp) ? `<dt>TV</dt><dd>${esc(bcOf(g.comp))}</dd>` : ''}
+    ${odds?.details ? `<dt>Line</dt><dd>${esc(odds.details)}${odds.overUnder ? ` · O/U ${esc(odds.overUnder)}` : ''}</dd>` : ''}
+  </dl></div>`, nhlGoalies(g), nhlOutTonight(g), nhlLeaders(g), nhlStreaks(g), nhlSeries(g),
+  `<div class="note">Scratches are checked every 5 minutes before the game. Box score, gamecast and play-by-play appear once the game starts.</div>`].join('');
+}
+// Box score footer: each team's scratches, once ESPN lists them.
+function nhlScratchNote(g){
+  const parts = nhlSides(g).map(t => { const sc = nhlScratches(t.id); return sc.length ? `<b>${esc(t.abbr)}</b> ${esc(sc.map(e => e.displayName).join(', '))}` : ''; }).filter(Boolean);
+  return parts.length ? `<div class="note">Scratches: ${parts.join(' · ')}</div>` : '';
 }
 
 /* ---------- Team page ---------- */
