@@ -697,6 +697,7 @@ function hero(g){
     const poss = state === 'in' && g.league === 'nfl' && (c.possession || String(view.sit?.possession) === String(c.team?.id)) ? '● Ball' : '';
     return `<div class="hteam ${cls}">${teamLink(g.league, c.team, img(logoOf(c.team), '', c.team?.abbreviation))}
       <div class="tn">${teamLink(g.league, c.team, esc(c.team?.shortDisplayName || c.team?.displayName))}</div><div class="tr">${esc(rec)}</div>
+      ${divRank(c.team?.id) ? `<div class="tr">${esc(divRank(c.team?.id))}</div>` : ''}
       ${state !== 'pre' ? `<div class="ts num">${esc(scoreOf(c.score) ?? 0)}</div>` : ''}<div class="poss">${esc(poss)}</div></div>`;
   };
   const date = new Date(comp.date);
@@ -706,12 +707,20 @@ function hero(g){
   const venue = view.s.gameInfo?.venue?.fullName;
   const bc = bcOf(comp);
   return `<div class="score-hero"><div class="hero-grid">${t(away)}<div class="hmid">${mid}</div>${t(home)}</div>
-    ${linescore(g)}
+    ${linescore(g)}${g.league === 'nhl' ? nhlShotTable(g) : ''}
     ${state === 'in' ? `<div class="livebar" id="livebar" role="status" aria-live="off"></div>` : ''}
     <div class="hero-foot">${esc([venue, bc].filter(Boolean).join(' · '))}<br>${bayPill(view.bay)}
       ${view.bay?.why ? `<div class="baynote">${esc(view.bay.why)}${view.bay.regional ? ` <a href="https://506sports.com/nfl.php" target="_blank" rel="noopener">See this week's coverage maps</a>` : ''}</div>` : ''}</div></div>`;
 }
 
+// "5th in Pacific": from the division table ESPN includes with each game summary (listed in standings order).
+function divRank(teamId){
+  for (const gr of view.s?.standings?.groups || []) {
+    const es = gr.standings?.entries || [], i = es.findIndex(e => String(e.id) === String(teamId));
+    if (i >= 0) return `${ordinal(i + 1)} in ${String(gr.header || '').replace(/^\d{4}(-\d{2,4})?\s+/, '').replace(/\s+Standings$/i, '').replace(/\s+Division$/i, '')}`;
+  }
+  return '';
+}
 function linescore(g){
   const { home, away, league, state } = g;
   if (state === 'pre' || !home || !away) return '';
@@ -749,9 +758,12 @@ function wireGame(){
 }
 
 /* ---------- Box score ---------- */
+// My team (one on this view's home screen) first, whether home or away; otherwise the away team first.
+const isMine = (league, id) => TEAMS.some(t => t.league === league && String(t.id) === String(id));
 function orderedPlayers(g){
   const ps = g.s.boxscore?.players || [];
-  return [...ps].sort((a, b) => (String(a.team?.id) === String(g.away?.team?.id) ? -1 : 1) - (String(b.team?.id) === String(g.away?.team?.id) ? -1 : 1));
+  const rank = p => isMine(g.league, p.team?.id) ? 0 : String(p.team?.id) === String(g.away?.team?.id) ? 1 : 2;
+  return [...ps].sort((a, b) => rank(a) - rank(b));
 }
 function grpTitle(gp){
   const t = gp.name || gp.type || gp.text || '';
@@ -829,7 +841,7 @@ function renderBox(g){
     return `<div class="box"><div class="teamhead">${teamLink(g.league, p.team, img(logoOf(p.team), 'logo', p.team?.abbreviation) + esc(p.team?.displayName))}</div>${groups}</div>`;
   });
   return teams.join('') + (g.league === 'nba' ? `<div class="note">TS% (true shooting) and eFG% (effective field goal) are calculated from the box score.</div>` : '')
-    + (g.league === 'nhl' ? nhlScratchNote(g) : '');
+    + (g.league === 'nhl' ? nhlLinesBox(g) + nhlScratchNote(g) : '');
 }
 
 /* ---------- Team stats ---------- */
@@ -971,7 +983,7 @@ function scoringSummary(g){
 }
 
 function renderSummary(g){
-  return [winProb(g), scoringSummary(g), leaders(g)].filter(Boolean).join('') || `<div class="empty">No summary available.</div>`;
+  return [g.league === 'nhl' ? nhlInsights(g) : '', winProb(g), scoringSummary(g), leaders(g)].filter(Boolean).join('') || `<div class="empty">No summary available.</div>`;
 }
 
 /* ---------- Play-by-play ---------- */
@@ -1073,7 +1085,7 @@ function renderGamecast(g){
   if (g.league === 'nfl') parts.push(nflField(g));
   if (g.league === 'mlb') parts.push(mlbDiamond(g));
   if (g.league === 'nba') parts.push(nbaLive(g), nbaShots(g));
-  if (g.league === 'nhl') parts.push(nhlLive(g), nhlShots(g));
+  if (g.league === 'nhl') parts.push(nhlLive(g), nhlInsights(g), nhlOnIce(g), nhlShots(g), nhlMilestones(g));
   parts.push(winProb(g), recentPlays(g), quickCompare(g), scoringSummary(g), leaders(g));
   return parts.filter(Boolean).join('');
 }
@@ -1238,7 +1250,8 @@ function nhlLive(g){
   if (!last) return '';
   const sog = c => (orderedTeams(g).find(t => String(t?.team?.id) === String(c?.team?.id))?.statistics || []).find(s => s.name === 'shotsTotal')?.displayValue;
   const sa = sog(g.away), sh = sog(g.home);
-  return `<div class="box"><div class="lastplay"><span class="lbl">Last play · ${esc(nhlClk(g, last))}</span>${esc(last.text)}</div>
+  const logo = teamLogoById(g, last.team?.id);
+  return `<div class="box"><div class="lastplay"><span class="lbl">Last play · ${esc(nhlClk(g, last))}</span>${logo ? `<span style="display:inline-flex;gap:8px;align-items:center">${img(logo, 'logo', '')}${esc(last.text)}</span>` : esc(last.text)}</div>
     ${sa != null && sh != null ? `<div class="small" style="margin-top:8px">Shots on goal: <b>${esc(g.away?.team?.abbreviation)} ${esc(sa)}</b> · <b>${esc(g.home?.team?.abbreviation)} ${esc(sh)}</b></div>` : ''}</div>`;
 }
 // ESPN rink coordinates are feet from center ice (x −100…100, goal lines at ±89; y −42.5…42.5).
@@ -1308,9 +1321,10 @@ const NHL_WEB = 'https://site.web.api.espn.com/apis/common/v3/sports/hockey/nhl'
 const nhlSides = g => [g.away, g.home].filter(Boolean).map(c => ({ id:String(c.team?.id), abbr:c.team?.abbreviation, name:c.team?.displayName, team:c.team }));
 async function loadNhlExtra(g, state){
   const id = view.id, season = g.s.header?.season?.year, stype = g.s.header?.season?.type || 2;
-  const x = view.nx ||= { players:{}, roster:{}, ranks:{}, logs:{}, rosterAt:0, started:false, done:false };
+  const x = view.nx ||= { players:{}, roster:{}, ranks:{}, logs:{}, career:{}, lines:{ seen:{}, samples:[] }, rosterAt:0, linesAt:0,
+    started:false, done:false, playersStarted:false, playersDone:false, careerStarted:false, careerDone:false };
   const alive = () => view.id === id && view.league === 'nhl';
-  const redraw = () => { if (alive() && (view.tab === 'preview' || view.tab === 'box')) renderGame(); };
+  const redraw = () => { if (alive() && ['preview', 'box', 'gamecast', 'summary'].includes(view.tab)) renderGame(); };
   const sides = nhlSides(g);
   // Rosters: before the game, look again every 5 minutes for newly announced scratches; after that once is enough.
   if (!x.rosterAt || (state === 'pre' && Date.now() - x.rosterAt > 5*60e3)) {
@@ -1320,16 +1334,37 @@ async function loadNhlExtra(g, state){
     }));
     redraw();
   }
+  // Lines: who was on the ice at even-strength faceoffs (live: new faceoffs every 30 seconds)
+  if (state !== 'pre' && !x.linesBusy && (!x.linesAt || (state === 'in' && Date.now() - x.linesAt > 30e3))) {
+    x.linesBusy = true;
+    nhlLoadLines(id).catch(() => {}).finally(() => { x.linesBusy = false; redraw(); });
+  }
+  if (!x.playersStarted) {
+    x.playersStarted = true;
+    await Promise.all(sides.map(async t => {
+      try {
+        const d = await getJSON(`${API}/hockey/nhl/teams/${t.id}/athletes/statistics?seasontype=${stype}${season ? `&season=${season}` : ''}`);
+        x.players[t.id] = Object.fromEntries((d.results || []).map(c => [c.name, playerRows(c)]));
+      } catch { x.players[t.id] = {}; }
+    }));
+    x.playersDone = true;
+    if (!alive()) return;
+    redraw();
+  }
+  if (!x.playersDone) return;
+  // Career totals for upcoming milestones: everyone who has played this season
+  if (state !== 'post' && !x.careerStarted) {
+    x.careerStarted = true;
+    const ids = sides.flatMap(t => Object.values(x.players[t.id] || {}).flat().filter(p => (Number(p.vals.games?.value) || 0) > 0).map(p => p.id));
+    nhlPool([...new Set(ids)], 8, async aid => {
+      const d = await getJSON(`${NHL_CORE}/athletes/${aid}/statistics/0`);
+      const c = {};
+      for (const cat of d.splits?.categories || []) for (const st of cat.stats || []) if (!(st.name in c)) c[st.name] = st.value;
+      x.career[aid] = c;
+    }).then(() => { x.careerDone = true; redraw(); });
+  }
   if (state !== 'pre' || x.started) return;
   x.started = true;
-  await Promise.all(sides.map(async t => {
-    try {
-      const d = await getJSON(`${API}/hockey/nhl/teams/${t.id}/athletes/statistics?seasontype=${stype}${season ? `&season=${season}` : ''}`);
-      x.players[t.id] = Object.fromEntries((d.results || []).map(c => [c.name, playerRows(c)]));
-    } catch { x.players[t.id] = {}; }
-  }));
-  if (!alive()) return;
-  redraw();
   const leaderIds = [...new Set((g.s.leaders || []).flatMap(t => (t.leaders || []).map(c => c.leaders?.[0]?.athlete?.id)).filter(Boolean))];
   const goalieIds = ['awayTeam', 'homeTeam'].flatMap(k => (g.s.goalies?.[k]?.athletes || []).map(a => a.id));
   const scorers = sides.flatMap(t => nhlSkaters(t.id).slice(0, 8).map(p => p.id));
@@ -1516,13 +1551,249 @@ function nhlPreview(g){
     ${s.gameInfo?.venue?.fullName ? `<dt>Venue</dt><dd>${esc(s.gameInfo.venue.fullName)}${s.gameInfo.venue.address?.city ? ', ' + esc(s.gameInfo.venue.address.city) : ''}</dd>` : ''}
     ${bcOf(g.comp) ? `<dt>TV</dt><dd>${esc(bcOf(g.comp))}</dd>` : ''}
     ${odds?.details ? `<dt>Line</dt><dd>${esc(odds.details)}${odds.overUnder ? ` · O/U ${esc(odds.overUnder)}` : ''}</dd>` : ''}
-  </dl></div>`, nhlGoalies(g), nhlOutTonight(g), nhlLeaders(g), nhlStreaks(g), nhlSeries(g),
+  </dl></div>`, nhlGoalies(g), nhlOutTonight(g), nhlLeaders(g), nhlStreaks(g), nhlMilestones(g), nhlSeries(g),
   `<div class="note">Scratches are checked every 5 minutes before the game. Box score, gamecast and play-by-play appear once the game starts.</div>`].join('');
 }
 // Box score footer: each team's scratches, once ESPN lists them.
 function nhlScratchNote(g){
   const parts = nhlSides(g).map(t => { const sc = nhlScratches(t.id); return sc.length ? `<b>${esc(t.abbr)}</b> ${esc(sc.map(e => e.displayName).join(', '))}` : ''; }).filter(Boolean);
   return parts.length ? `<div class="note">Scratches: ${parts.join(' · ')}</div>` : '';
+}
+
+/* ---------- NHL in-game ---------- */
+async function nhlPool(items, n, fn){
+  const q = [...items];
+  await Promise.all(Array.from({ length:Math.min(n, q.length) }, async () => { while (q.length) { const it = q.shift(); try { await fn(it); } catch {} } }));
+}
+// Game time elapsed (minutes) when a play happened. ESPN's NHL play clock counts up within each period.
+function nhlElapsed(p){
+  const [m, sec] = String(p.clock?.displayValue || '0:00').split(':').map(Number);
+  return ((p.period?.number || 1) - 1) * 20 + (m || 0) + (sec || 0) / 60;
+}
+const nhlRegPlays = g => (g.s.plays || []).filter(p => !isShootout(p));
+// Shots on goal by period, counted from the play-by-play (saved shots plus goals).
+function nhlShotTable(g){
+  if (g.state === 'pre') return '';
+  const plays = nhlRegPlays(g).filter(p => /^(Shot|Goal)$/.test(p.type?.text || ''));
+  if (!plays.length) return '';
+  const n = Math.max(3, ...plays.map(p => p.period?.number || 0));
+  const cols = Array.from({ length:n }, (_, i) => nhlPerLabel(i + 1));
+  const row = c => {
+    const mine = plays.filter(p => String(p.team?.id) === String(c?.team?.id));
+    const by = cols.map((_, i) => mine.filter(p => p.period?.number === i + 1).length);
+    return `<tr><td>${esc(c?.team?.abbreviation)}</td>${by.map((v, i) => `<td>${i < (g.comp.status?.period || n) ? v : ''}</td>`).join('')}<td><b>${mine.length}</b></td></tr>`;
+  };
+  return `<div class="tablewrap line"><table><thead><tr><th>Shots</th>${cols.map(c => `<th>${esc(c)}</th>`).join('')}<th>T</th></tr></thead><tbody>${row(g.away)}${row(g.home)}</tbody></table></div>`;
+}
+// Minutes from "mm:ss"
+const mins = v => { const [m, s] = String(v || '').split(':').map(Number); return isNaN(m) ? null : m + (s || 0) / 60; };
+const mmss = m => `${Math.floor(m)}:${String(Math.round((m % 1) * 60)).padStart(2, '0')}`.replace(/:60$/, ':59');
+function nhlInsights(g){
+  if (g.state === 'pre') return '';
+  const plays = nhlRegPlays(g), sides = nhlSides(g);
+  if (!plays.length) return '';
+  const other = tid => sides.find(t => t.id !== tid);
+  const team = p => String(p.team?.id);
+  // shot attempts: shots, goals and misses by the shooting team; blocked shots are credited to the blocking team by ESPN
+  const attemptBy = p => /^(Shot|Goal|Missed)$/.test(p.type?.text || '') ? team(p) : p.type?.text === 'Blocked' ? other(team(p))?.id : null;
+  const count = (list, f) => Object.fromEntries(sides.map(t => [t.id, list.filter(p => f(p) === t.id).length]));
+  const att = count(plays, attemptBy);
+  const sog = count(plays, p => /^(Shot|Goal)$/.test(p.type?.text || '') ? team(p) : null);
+  const slot = count(plays, p => /^(Shot|Goal)$/.test(p.type?.text || '') && p.coordinate && Math.abs(p.coordinate.x) >= 69 && Math.abs(p.coordinate.x) <= 89 && Math.abs(p.coordinate.y) <= 22 ? team(p) : null);
+  const now = Math.max(...plays.map(nhlElapsed));
+  const recent = plays.filter(p => nhlElapsed(p) >= now - 10);
+  const att10 = count(recent, attemptBy);
+  const [A, H] = sides, ab = t => t.abbr;
+  const lead = (m, label, min = 0) => {
+    const a = m[A.id], h = m[H.id];
+    if (a + h < min || a === h) return null;
+    const [w, l] = a > h ? [A, H] : [H, A];
+    return { w, l, wv:Math.max(a, h), lv:Math.min(a, h), share:Math.max(a, h) / (a + h), label };
+  };
+  const out = [];
+  const a1 = lead(att, 'shot attempts', 10);
+  if (a1 && a1.share >= .55) out.push(`${ab(a1.w)} is out-attempting ${ab(a1.l)} ${a1.wv}–${a1.lv} (${Math.round(a1.share * 100)}% of shot attempts).`);
+  const sc = { [A.id]:Number(scoreOf(g.away?.score)) || 0, [H.id]:Number(scoreOf(g.home?.score)) || 0 };
+  const s1 = lead(sog, 'shots', 8);
+  if (s1 && sc[s1.w.id] < sc[s1.l.id]) out.push(`${ab(s1.w)} trails on the scoreboard but leads in shots on goal, ${s1.wv}–${s1.lv}.`);
+  const sl = lead(slot, 'slot shots', 4);
+  if (sl && sl.wv - sl.lv >= 3) out.push(`${ab(sl.w)} has the better looks: ${sl.wv}–${sl.lv} in shots on goal from the slot.`);
+  const r10 = lead(att10, 'recent', 5);
+  if (g.state === 'in' && r10 && r10.share >= .65) out.push(`Momentum: ${ab(r10.w)} has ${r10.wv} of the ${r10.wv + r10.lv} shot attempts in the last 10 minutes of play.`);
+  // power play, faceoffs, hits from the team box score
+  const ts = tid => Object.fromEntries((orderedTeams(g).find(t => String(t?.team?.id) === tid)?.statistics || []).map(x => [x.name, x.displayValue]));
+  for (const t of sides) {
+    const s2 = ts(t.id), opp = Number(s2.powerPlayOpportunities) || 0;
+    if (opp) out.push(`${ab(t)} is ${Number(s2.powerPlayGoals) || 0} for ${opp} on the power play.`);
+  }
+  const fo = sides.map(t => [t, Number(ts(t.id).faceoffPercent)]).filter(([, v]) => !isNaN(v)).sort((a, b) => b[1] - a[1])[0];
+  if (fo && fo[1] >= 58) out.push(`${ab(fo[0])} is winning ${fo[1].toFixed(0)}% of faceoffs.`);
+  const hits = Object.fromEntries(sides.map(t => [t.id, Number(ts(t.id).hits) || 0]));
+  const hl = lead(hits, 'hits', 15);
+  if (hl && hl.wv - hl.lv >= 8) out.push(`${ab(hl.w)} is the more physical team: ${hl.wv}–${hl.lv} in hits.`);
+  // players: multi-point nights, shot leaders, goalies vs their season save %
+  for (const p of orderedPlayers(g)) {
+    const tid = String(p.team?.id), abbr = p.team?.abbreviation;
+    for (const gp of p.statistics || []) {
+      const k = gp.keys || [], at = n => k.indexOf(n);
+      for (const a of gp.athletes || []) {
+        const st = a.stats || [], nm = a.athlete?.shortName || a.athlete?.displayName;
+        if (gp.name === 'goalies') {
+          const sa = Number(st[at('shotsAgainst')]) || 0, sv2 = Number(st[at('saves')]) || 0;
+          if (sa < 10) continue;
+          const season = (view.nx?.players[tid]?.goalkeeping || []).find(x => String(x.id) === String(a.athlete?.id));
+          const spct = parseFloat(season?.vals.savePct?.displayValue);
+          const pct3 = (sv2 / sa).toFixed(3).replace(/^0/, '');
+          out.push(`${nm} (${abbr}) has stopped ${sv2} of ${sa}, ${pct3}${!isNaN(spct) ? ` tonight vs ${String(season.vals.savePct.displayValue)} this season` : ''}.`);
+          continue;
+        }
+        const g2 = Number(st[at('goals')]) || 0, a2 = Number(st[at('assists')]) || 0, sh = Number(st[at('shotsTotal')]) || 0;
+        if (g2 + a2 >= 2) out.push(`${nm} (${abbr}) has ${g2 + a2} points (${g2} G, ${a2} A).`);
+        else if (sh >= 5) out.push(`${nm} (${abbr}) leads the way with ${sh} shots on goal.`);
+      }
+    }
+  }
+  const toi = nhlToiOutliers(g, now);
+  if (!out.length && !toi) return '';
+  return `<div class="box"><h3>In-game insights <span class="sub">from the play-by-play and box score</span></h3>
+    ${out.length ? `<ul class="pvl">${out.map(t => `<li>${esc(t)}</li>`).join('')}</ul>` : ''}${toi}</div>`;
+}
+// Skaters whose ice time is well above or below their season average (live: projected to 60 minutes).
+function nhlToiOutliers(g, elapsed){
+  if (!view.nx?.playersDone) return '';
+  const full = g.state === 'post', gameMin = full ? Math.max(60, elapsed) : elapsed;
+  if (gameMin < 15) return '';
+  const rows = [];
+  for (const p of orderedPlayers(g)) {
+    const tid = String(p.team?.id);
+    for (const gp of p.statistics || []) {
+      if (gp.name === 'goalies') continue;
+      const i = (gp.keys || []).indexOf('timeOnIce');
+      if (i < 0) continue;
+      for (const a of gp.athletes || []) {
+        const now = mins(a.stats?.[i]);
+        const season = (view.nx.players[tid]?.team || []).find(x => String(x.id) === String(a.athlete?.id));
+        const avg = mins(season?.vals.timeOnIcePerGame?.displayValue);
+        if (now == null || avg == null || avg < 4) continue;
+        const pace = full ? now : now / gameMin * 60;
+        const diff = pace - avg;
+        if (Math.abs(diff) < Math.max(3, avg * .2)) continue;
+        rows.push({ up:diff > 0, diff, text:`${a.athlete?.shortName} (${p.team?.abbreviation}): ${full ? `played ${mmss(now)}` : `${mmss(now)} so far, on pace for ${mmss(pace)}`} vs ${mmss(avg)} a game this season` });
+      }
+    }
+  }
+  if (!rows.length) return '';
+  rows.sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
+  return `<div class="grp-title">Ice time well above or below normal</div><ul class="pvl">${rows.slice(0, 8).map(r =>
+    `<li><div class="top"><span class="tagx ${r.up ? 'hot' : 'cold'}">${r.up ? 'More' : 'Less'}</span><span>${esc(r.text)}</span></div></li>`).join('')}</ul>`;
+}
+// Lines: sample who is on the ice at faceoffs (ESPN's core play-by-play has each play's personnel).
+async function nhlLoadLines(id){
+  const x = view.nx;
+  x.linesAt = Date.now();
+  const d = await getJSON(`${NHL_CORE}/events/${id}/competitions/${id}/plays?limit=1000`);
+  const fos = (d.items || []).filter(p => /face ?off/i.test(p.type?.text || '') && p.personnel?.$ref && !x.lines.seen[p.id]);
+  const room = Math.max(0, 90 - Object.keys(x.lines.seen).length);
+  await nhlPool(fos.slice(-room), 6, async p => {
+    x.lines.seen[p.id] = true;
+    const pj = await getJSON(String(p.personnel.$ref).replace(/^http:/, 'https:'));
+    const sample = {};
+    for (const c of pj.playPersonnel || []) {
+      const tid = String(c.competitor?.$ref || '').match(/competitors\/(\d+)/)?.[1];
+      if (tid) sample[tid] = (c.entries || []).map(e => String(e.athlete?.$ref || '').match(/athletes\/(\d+)/)?.[1]).filter(Boolean);
+    }
+    x.lines.samples.push(sample);
+  });
+}
+function nhlLines(tid){
+  const x = view.nx;
+  if (!x?.lines.samples.length || !x.playersDone) return null;
+  const pos = id => nhlPlayer(tid, id)?.p?.pos || '';
+  const F = {}, D = {};
+  let n = 0;
+  for (const smp of x.lines.samples) {
+    const ids = smp[tid];
+    if (!ids) continue;
+    const f = ids.filter(i => /^(C|LW|RW|F)$/.test(pos(i))).sort(), d = ids.filter(i => pos(i) === 'D').sort();
+    if (f.length === 3 && d.length === 2) { F[f] = (F[f] || 0) + 1; D[d] = (D[d] || 0) + 1; n++; } // 5-on-5 only
+  }
+  const pick = (m, k) => {
+    const used = new Set(), out = [];
+    for (const [key, c] of Object.entries(m).sort((a, b) => b[1] - a[1])) {
+      const ids = key.split(',');
+      if (c < 2 || ids.some(i => used.has(i))) continue;
+      ids.forEach(i => used.add(i)); out.push({ ids, c });
+      if (out.length === k) break;
+    }
+    return out;
+  };
+  return { fwd:pick(F, 4), def:pick(D, 3), n };
+}
+const nhlShort = (tid, id) => nhlPlayer(tid, id)?.p?.short || (view.nx?.roster[tid] || []).find(e => String(e.playerId) === String(id))?.displayName || '?';
+function nhlLinesBox(g){
+  const sides = nhlSides(g).sort((a, b) => isMine(g.league, b.id) - isMine(g.league, a.id));
+  const ls = sides.map(t => nhlLines(t.id));
+  if (!ls.some(l => l && (l.fwd.length || l.def.length))) return view.nx?.linesBusy ? `<div class="note">Working out lines…</div>` : '';
+  const body = (t, l) => !l || !(l.fwd.length || l.def.length) ? `<div class="empty">Not enough faceoffs yet.</div>` : `<ul class="pvl">${[
+    ...l.fwd.map((x, i) => [`L${i + 1}`, x]), ...l.def.map((x, i) => [`D${i + 1}`, x])].map(([lab, x]) =>
+    `<li><div class="top"><span class="tagx">${lab}</span><span>${esc(x.ids.map(i => nhlShort(t.id, i)).join(' – '))}</span><span class="lrk" style="margin-left:auto">${x.c} faceoffs</span></div></li>`).join('')}</ul>`;
+  const total = Math.max(...ls.map(l => l?.n || 0));
+  return `<div class="box"><h3>Lines tonight <span class="sub">from who was on the ice at ${total} five-on-five faceoffs</span></h3>
+    <div class="two">${sides.map((t, i) => `<div><div class="teamhead" style="font-size:14px">${img(logoOf(t.team), 'logo')}${esc(t.name)}</div>${body(t, ls[i])}</div>`).join('')}</div>
+    <div class="note">Worked out from faceoff lineups, so lines that rarely take a faceoff together may be missing or mixed.</div></div>`;
+}
+// Players on the ice right now (live)
+function nhlOnIce(g){
+  if (g.state !== 'in' || !(g.s.onIce || []).length) return '';
+  const sides = nhlSides(g);
+  const body = t => {
+    const ids = ((g.s.onIce || []).find(o => String(o.teamId) === t.id)?.entries || []).map(e => String(e.athleteid));
+    if (!ids.length) return `<div class="empty">–</div>`;
+    const order = id => { const p = nhlPos(t.id, id); return p === 'G' ? 3 : p === 'D' ? 2 : 1; };
+    return `<div class="small">${ids.sort((a, b) => order(a) - order(b)).map(id => `${esc(nhlShort(t.id, id))}${nhlPos(t.id, id) ? ` <span class="pos">${esc(nhlPos(t.id, id))}</span>` : ''}`).join(' · ')}</div>`;
+  };
+  return `<div class="box"><h3>On the ice now</h3>${twoCols(g, body)}</div>`;
+}
+// Career milestones within reach: games (every 100), goals (50), assists and points (100); goalies: games, wins (50), shutouts (10).
+const NHL_MS = { skater:[['games', 'games', 100], ['goals', 'goals', 50], ['assists', 'assists', 100], ['points', 'points', 100]],
+                 goalie:[['games', 'games', 100], ['wins', 'wins', 50], ['shutouts', 'shutouts', 10]] };
+function nhlMilestoneList(g){
+  const x = view.nx, out = [];
+  if (!x?.playersDone) return out;
+  for (const t of nhlSides(g)) {
+    const P = x.players[t.id] || {};
+    for (const [rows, goalie] of [[P.team || [], false], [P.goalkeeping || [], true]]) for (const p of rows) {
+      const car = x.career[p.id];
+      if (!car) continue;
+      const gp = Number(p.vals.games?.value) || 0;
+      for (const [k, label, step] of NHL_MS[goalie ? 'goalie' : 'skater']) {
+        const have = Number(car[k]);
+        if (!isFinite(have)) continue;
+        const next = (Math.floor(have / step) + 1) * step, need = next - have;
+        let games;
+        if (k === 'games') games = need;
+        else {
+          const rate = gp >= 5 ? (Number(p.vals[k]?.value) || 0) / gp : 0;
+          if (!rate) continue;
+          games = Math.ceil(need / rate);
+        }
+        if (games > 5) continue;
+        const what = k === 'games' ? `${need} game${need === 1 ? '' : 's'} from ${next} career games`
+          : `${need} ${need === 1 ? label.replace(/s$/, '') : label} from ${next} career ${label}`;
+        out.push({ team:t, name:p.name, pos:p.pos, games, text:`${what}${k === 'games' ? '' : ` · about ${games} game${games === 1 ? '' : 's'} at this season's pace`}` });
+      }
+    }
+  }
+  return out.sort((a, b) => a.games - b.games);
+}
+function nhlMilestones(g){
+  const x = view.nx;
+  if (g.state === 'post') return '';
+  const list = nhlMilestoneList(g);
+  if (!list.length) return x?.careerDone ? `<div class="box"><h3>Milestones within reach</h3><div class="empty">No career milestones within 5 games.</div></div>`
+    : g.state === 'pre' ? `<div class="box"><h3>Milestones within reach</h3><div class="empty">Checking career totals…</div></div>` : '';
+  return `<div class="box"><h3>Milestones within reach <span class="sub">career totals before this game, within about 5 games</span></h3><ul class="pvl">${list.map(m =>
+    `<li><div class="top">${img(logoOf(m.team.team), 'logo', '')}<span class="nm">${esc(m.name)}</span><span class="small">${esc(m.pos || '')}</span></div><div class="meta">${esc(m.text)}</div></li>`).join('')}</ul></div>`;
 }
 
 /* ---------- Team page ---------- */
