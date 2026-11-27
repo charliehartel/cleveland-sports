@@ -1729,6 +1729,7 @@ function nhlPPBadge(g){
 function nhlPenaltyBox(g){
   if (g.state !== 'in') return '';
   const st = nhlPenaltyState(g), pp = nhlPowerPlay(g);
+  if (!st.inBox.length) return ''; // only while someone is serving a penalty
   const body = t => {
     const list = st.inBox.filter(x => x.team === t.id).sort((a, b) => a.end - b.end);
     if (!list.length) return `<div class="empty">Nobody in the box.</div>`;
