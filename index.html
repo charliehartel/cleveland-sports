@@ -1031,7 +1031,7 @@ function scoringSummary(g){
     : g.league === 'nhl' ? nhlClk(g, p) : `Q${p.period?.number}${p.clock?.displayValue ? ' ' + p.clock.displayValue : ''}`;
   const seen = new Set();
   const items = list.filter(p => { const k = p.id; if (seen.has(k)) return false; seen.add(k); return true; }).map(p =>
-    `<li class="scoring${goalKind(g, p) ? ' goal-' + goalKind(g, p) : ''}"><span class="clk">${esc(per(p))}</span>${img(teamLogoById(g, p.team?.id), '', '')}<span class="txt">${goalKind(g, p) === 'mine' ? goalBanner(g, p) : ''}${esc(p.text)}${nhlStrength(g, p)}</span><span class="scr">${playScore(g, p)}</span></li>`).join('');
+    `<li class="scoring"><span class="clk">${esc(per(p))}</span>${img(teamLogoById(g, p.team?.id), '', '')}<span class="txt">${esc(p.text)}${nhlStrength(g, p)}</span><span class="scr">${playScore(g, p)}</span></li>`).join(''); // plain list: the goal light is for the play-by-play
   return `<div class="box"><h3>Scoring summary <span class="sub">${esc(g.away?.team?.abbreviation)}–${esc(g.home?.team?.abbreviation)}</span></h3><ul class="plays">${items}</ul></div>`;
 }
 
