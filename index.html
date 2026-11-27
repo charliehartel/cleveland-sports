@@ -1393,6 +1393,18 @@ async function loadNhlExtra(g, state){
     x.linesBusy = true;
     nhlLoadLines(id).catch(() => {}).finally(() => { x.linesBusy = false; redraw(); });
   }
+  if (!x.teamsStarted) {
+    x.teamsStarted = true;
+    x.teamStats ||= {};
+    Promise.all(sides.map(async t => {
+      try {
+        const d = await getJSON(`${NHL_CORE}/seasons/${season}/types/${stype}/teams/${t.id}/statistics`);
+        const r = {};
+        for (const c of d.splits?.categories || []) for (const st of c.stats || []) if (!(st.name in r)) r[st.name] = { v:st.displayValue, rank:st.rankDisplayValue };
+        x.teamStats[t.id] = r;
+      } catch {}
+    })).then(redraw);
+  }
   if (!x.playersStarted) {
     x.playersStarted = true;
     await Promise.all(sides.map(async t => {
@@ -1696,7 +1708,10 @@ function nhlPowerPlay(g){
 }
 function nhlPPBadge(g){
   const pp = nhlPowerPlay(g);
-  return pp ? `<div><span class="ppbar">${esc(pp.pp.abbr)} power play · ${esc(pp.strength)} · ${esc(mmss(pp.left))}</span></div>` : '';
+  if (!pp) return '';
+  const a = view.nx?.teamStats?.[pp.pp.id]?.powerPlayPct, tn = nhlPPTonight(g, pp.pp.id);
+  return `<div><span class="ppbar">${esc(pp.pp.abbr)} power play · ${esc(pp.strength)} · ${esc(mmss(pp.left))}</span></div>
+    <div class="small" style="margin-top:4px">${a ? `${esc(a.v)}% this season (${esc(String(a.rank || '').replace(/^Tied-/, 'T-'))}) · ` : ''}${tn.goals} for ${tn.opps} tonight</div>`;
 }
 function nhlPenaltyBox(g){
   if (g.state !== 'in') return '';
@@ -1707,8 +1722,24 @@ function nhlPenaltyBox(g){
     return `<ul class="pvl">${list.map(x => `<li><div class="top"><span class="nm">${esc(x.who)}</span><span class="small">${esc(nhlPenLabel(x.p))}</span><span class="num" style="margin-left:auto"><b>${esc(mmss(x.end - st.now))}</b></span></div>
       ${x.coincident ? '<div class="meta">Matching penalties, no power play</div>' : !x.strength ? '<div class="meta">Misconduct, team not shorthanded</div>' : ''}</li>`).join('')}</ul>`;
   };
-  return `<div class="box"><h3>Penalty box ${pp ? `<span class="sub">${esc(pp.pp.name)} on the power play (${esc(pp.strength)}), ${esc(mmss(pp.left))} left</span>` : '<span class="sub">even strength</span>'}</h3>${twoCols(g, body)}
+  return `<div class="box"><h3>Penalty box ${pp ? `<span class="sub">${esc(pp.pp.name)} on the power play (${esc(pp.strength)}), ${esc(mmss(pp.left))} left</span>` : '<span class="sub">even strength</span>'}</h3>${pp ? nhlSpecialTeams(g, pp) : ''}${twoCols(g, body)}
     <div class="note">Time left is worked out from the play-by-play and the game clock, so it can be a few seconds off.</div></div>`;
+}
+// Season power play (team on it) and penalty kill (team killing it), with NHL ranks, plus the power play tonight
+function nhlPPTonight(g, tid){
+  const st = Object.fromEntries((orderedTeams(g).find(t => String(t?.team?.id) === tid)?.statistics || []).map(x => [x.name, x.displayValue]));
+  return { goals:Number(st.powerPlayGoals) || 0, opps:Number(st.powerPlayOpportunities) || 0 };
+}
+function nhlSpecialTeams(g, pp){
+  const T = view.nx?.teamStats || {}, a = T[pp.pp.id] || {}, b = T[pp.sh.id] || {};
+  const rk = x => x?.rank ? ` (${x.rank.replace(/^Tied-/, 'T-')})` : '';
+  const tn = nhlPPTonight(g, pp.pp.id);
+  const parts = [
+    a.powerPlayPct ? `<b>${esc(pp.pp.abbr)} power play</b> ${esc(a.powerPlayPct.v)}%${esc(rk(a.powerPlayPct))} this season` : '',
+    b.penaltyKillPct ? `<b>${esc(pp.sh.abbr)} penalty kill</b> ${esc(b.penaltyKillPct.v)}%${esc(rk(b.penaltyKillPct))}` : '',
+    `<b>${esc(pp.pp.abbr)} tonight</b> ${tn.goals} for ${tn.opps}`,
+  ].filter(Boolean);
+  return `<div class="pvl" style="margin:0 0 10px"><div class="meta" style="font-size:14px;color:var(--text)">${parts.join(' · ')}</div></div>`;
 }
 function nhlPenaltySummary(g){
   const { pens } = nhlPenaltyState(g);
@@ -1754,9 +1785,11 @@ function nhlInsights(g){
   if (g.state === 'in' && r10 && r10.share >= .65) out.push(`Momentum: ${ab(r10.w)} has ${r10.wv} of the ${r10.wv + r10.lv} shot attempts in the last 10 minutes of play.`);
   // power play, faceoffs, hits from the team box score
   const ts = tid => Object.fromEntries((orderedTeams(g).find(t => String(t?.team?.id) === tid)?.statistics || []).map(x => [x.name, x.displayValue]));
+  // power play: only when it stands out (2+ goals, or 0 for 4 or more)
   for (const t of sides) {
-    const s2 = ts(t.id), opp = Number(s2.powerPlayOpportunities) || 0;
-    if (opp) out.push(`${ab(t)} is ${Number(s2.powerPlayGoals) || 0} for ${opp} on the power play.`);
+    const s2 = ts(t.id), opp = Number(s2.powerPlayOpportunities) || 0, ppg = Number(s2.powerPlayGoals) || 0;
+    if (ppg >= 2) out.push(`${ab(t)}'s power play is clicking: ${ppg} for ${opp}.`);
+    else if (opp >= 4 && !ppg) out.push(`${ab(t)} is 0 for ${opp} on the power play.`);
   }
   const fo = sides.map(t => [t, Number(ts(t.id).faceoffPercent)]).filter(([, v]) => !isNaN(v)).sort((a, b) => b[1] - a[1])[0];
   if (fo && fo[1] >= 58) out.push(`${ab(fo[0])} is winning ${fo[1].toFixed(0)}% of faceoffs.`);
