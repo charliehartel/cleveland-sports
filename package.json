@@ -1,0 +1,11 @@
+{
+  "name": "cleveland-sports",
+  "private": true,
+  "description": "Personal scores app for the Cavaliers, Browns and Guardians",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}
