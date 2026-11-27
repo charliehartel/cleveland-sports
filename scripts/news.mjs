@@ -127,36 +127,8 @@ export const RSS_SOURCES = [
     feeds: { raiders: ['https://www.reviewjournal.com/sports/raiders/feed/'] },
   },
   // ---- New York outlets ----
-  {
-    id: 'nypost', name: 'New York Post', domains: ['nypost.com'], scope: 'team-feed',
-    feeds: {
-      mets:     ['https://nypost.com/mets/feed/'],
-      nygiants: ['https://nypost.com/giants/feed/'],
-      knicks:   ['https://nypost.com/knicks/feed/'],
-      yankees:  ['https://nypost.com/yankees/feed/'],
-      jets:     ['https://nypost.com/jets/feed/'],
-    },
-  },
-  {
-    id: 'nydn', name: 'NY Daily News', domains: ['nydailynews.com'], scope: 'team-feed',
-    feeds: {
-      mets:     ['https://www.nydailynews.com/sports/baseball/mets/feed/'],
-      nygiants: ['https://www.nydailynews.com/sports/football/giants/feed/'],
-      knicks:   ['https://www.nydailynews.com/sports/basketball/knicks/feed/'],
-      yankees:  ['https://www.nydailynews.com/sports/baseball/yankees/feed/'],
-      jets:     ['https://www.nydailynews.com/sports/football/jets/feed/'],
-    },
-  },
-  {
-    id: 'sny', name: 'SNY', domains: ['sny.tv'], scope: 'team-feed',
-    feeds: {
-      mets:     ['https://sny.tv/feeds/mets', 'https://sny.tv/mets/rss'],
-      nygiants: ['https://sny.tv/feeds/giants', 'https://sny.tv/giants/rss'],
-      knicks:   ['https://sny.tv/feeds/knicks', 'https://sny.tv/knicks/rss'],
-      yankees:  ['https://sny.tv/feeds/yankees', 'https://sny.tv/yankees/rss'],
-      jets:     ['https://sny.tv/feeds/jets', 'https://sny.tv/jets/rss'],
-    },
-  },
+  // Tried and not usable: NY Daily News (refuses these requests, HTTP 403), SNY (no feeds) and the
+  // New York Post (returns no feed items to automated requests).
   // Threads (team accounts) will go here once the Meta app is approved for profile discovery.
 ];
 
