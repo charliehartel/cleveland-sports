@@ -1,22 +1,44 @@
-// The Bay Area view (?view=bayarea): its own teams, title and filter, and no Cleveland news.
+// Views: Cleveland (default) and Bay Area (?view=bayarea), chosen from the header title.
 const { test, expect, ready } = require('./helpers');
 
-test('Bay Area view shows the Warriors, 49ers and Sharks, without the Cleveland news feed', async ({ page }) => {
+const BAY = ['Warriors', '49ers', 'Giants', 'Sharks', 'Athletics', 'Raiders'];
+
+test('Bay Area view shows its six teams and its own title', async ({ page }) => {
   await page.goto('/?view=bayarea#/');
   await ready(page, '.quick');
   await expect(page).toHaveTitle('Bay Area Sports');
-  await expect(page.locator('.brand')).toHaveText('Bay Area Sports');
-  await expect(page.locator('.qteam')).toHaveText([/Warriors/, /49ers/, /Sharks/]);
-  await expect(page.locator('#home-news')).toHaveCount(0);
+  await expect(page.locator('#view')).toHaveValue('bayarea');
+  await expect(page.locator('.qteam .qname')).toHaveText(BAY);
+  await expect(page.locator('[data-filter]')).toHaveCount(BAY.length + 1);
+  await expect(page.locator('#home-news')).toHaveCount(1);
   await expect(page.locator('.err')).toHaveCount(0);
   const cards = await page.locator('.card').count();
   if (cards) expect(await page.locator('.card .bay').count()).toBe(cards);
-  // the Sharks link keeps the view and opens a hockey team page with no News tab
+  // the Sharks link keeps the view and opens a hockey team page with a News tab
   await page.locator('.qteam', { hasText: 'Sharks' }).click();
   await expect(page).toHaveURL(/\?view=bayarea#\/t\/nhl\/18$/);
   await ready(page, '.team-hero');
-  await expect(page.locator('.tab')).toHaveText(['Schedule', 'Team Stats', 'Standings']);
+  await expect(page.locator('.tab')).toHaveText(['Schedule', 'Team Stats', 'Standings', 'News']);
   await expect(page).toHaveTitle('San Jose Sharks · Bay Area Sports');
+});
+
+test('the header title switches views', async ({ page }) => {
+  await page.goto('/#/');
+  await ready(page, '.qteam');
+  await expect(page.locator('#view')).toHaveValue('cleveland');
+  await expect(page.locator('#view option')).toHaveText(['Cleveland Sports', 'Bay Area Sports']);
+  await page.selectOption('#view', 'bayarea');
+  await expect(page).toHaveURL(/\?view=bayarea#\/$/);
+  await ready(page, '.qteam');
+  await expect(page.locator('.qteam .qname')).toHaveText(BAY);
+  // from a team page too, back to Cleveland's home
+  await page.locator('.qteam', { hasText: 'Giants' }).click();
+  await ready(page, '.team-hero');
+  await page.selectOption('#view', 'cleveland');
+  await expect(page).toHaveURL(/\/#\/$/);
+  await ready(page, '.qteam');
+  await expect(page.locator('.qteam .qname')).toHaveText(['Cavaliers', 'Browns', 'Guardians']);
+  await expect(page).toHaveTitle('Cleveland Sports');
 });
 
 test('each view keeps its own team filter', async ({ page }) => {
@@ -34,5 +56,18 @@ test('the bayarea/ shortcut forwards to the Bay Area view', async ({ page }) => 
   await page.goto('/bayarea/index.html');
   await expect(page).toHaveURL(/\/\?view=bayarea$/);
   await ready(page, '.quick');
-  await expect(page.locator('.qteam')).toHaveText([/Warriors/, /49ers/, /Sharks/]);
+  await expect(page.locator('.qteam .qname')).toHaveText(BAY);
+});
+
+test('news in each view covers only that view\'s teams', async ({ page }) => {
+  const now = Date.now();
+  const item = (team, title) => ({ team, source: 'espn', sourceName: 'ESPN', title, url: `https://example.org/${team}`, published: new Date(now - 60e3).toISOString(), summary: '', image: '' });
+  const body = JSON.stringify({ updated: new Date(now).toISOString(), sources: [], items: [item('browns', 'Browns story'), item('giants', 'Giants story'), item('raiders', 'Raiders story')] });
+  await page.route(/raw\.githubusercontent\.com\/.*news\.json/, r => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body }));
+  await page.goto('/?view=bayarea#/');
+  await ready(page, '.latest');
+  await expect(page.locator('.latest .ltitle')).toHaveText(['Giants story', 'Raiders story']);
+  await page.goto('/#/');
+  await ready(page, '.latest');
+  await expect(page.locator('.latest .ltitle')).toHaveText(['Browns story']);
 });

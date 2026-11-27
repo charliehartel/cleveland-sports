@@ -15,6 +15,13 @@ export const TEAMS = {
   cavs:      { league: 'nba', sport: 'basketball', espnId: '5', words: ['cavaliers', 'cavs'], paths: ['cavs', 'cavaliers'] },
   browns:    { league: 'nfl', sport: 'football',   espnId: '5', words: ['browns'], paths: ['browns'] },
   guardians: { league: 'mlb', sport: 'baseball',   espnId: '5', words: ['guardians'], paths: ['guardians', 'cleveland-guardians'] },
+  // Bay Area
+  warriors:  { league: 'nba', sport: 'basketball', espnId: '9',  words: ['warriors'], paths: ['warriors', 'golden-state-warriors'] },
+  niners:    { league: 'nfl', sport: 'football',   espnId: '25', words: ['49ers', 'niners'], paths: ['49ers', 'san-francisco-49ers'] },
+  giants:    { league: 'mlb', sport: 'baseball',   espnId: '26', words: ['sf giants', 'san francisco giants'], paths: ['giants', 'sf-giants', 'san-francisco-giants'] },
+  sharks:    { league: 'nhl', sport: 'hockey',     espnId: '18', words: ['sharks'], paths: ['sharks', 'san-jose-sharks'] },
+  athletics: { league: 'mlb', sport: 'baseball',   espnId: '11', words: ['athletics', "a's"], paths: ['athletics', 'oakland-athletics', 'as'] },
+  raiders:   { league: 'nfl', sport: 'football',   espnId: '13', words: ['raiders'], paths: ['raiders', 'las-vegas-raiders'] },
 };
 
 // Each RSS source lists candidate feed addresses per team; the first one that returns items is used.
@@ -36,16 +43,27 @@ export const RSS_SOURCES = [
       browns:    ['https://www.nytimes.com/athletic/rss/nfl/browns/', 'https://theathletic.com/rss/nfl/browns/'],
       cavs:      ['https://www.nytimes.com/athletic/rss/nba/cavaliers/', 'https://theathletic.com/rss/nba/cavaliers/'],
       guardians: ['https://www.nytimes.com/athletic/rss/mlb/guardians/', 'https://theathletic.com/rss/mlb/guardians/'],
+      warriors:  ['https://www.nytimes.com/athletic/rss/nba/warriors/'],
+      niners:    ['https://www.nytimes.com/athletic/rss/nfl/49ers/'],
+      giants:    ['https://www.nytimes.com/athletic/rss/mlb/giants/'],
+      sharks:    ['https://www.nytimes.com/athletic/rss/nhl/sharks/'],
+      athletics: ['https://www.nytimes.com/athletic/rss/mlb/athletics/'],
+      raiders:   ['https://www.nytimes.com/athletic/rss/nfl/raiders/'],
     },
   },
   {
     // Official team news: everything is about the team, so only promos are dropped.
-    id: 'team', name: 'Team site', domains: ['clevelandbrowns.com', 'mlb.com'], scope: 'official',
-    names: { browns: 'ClevelandBrowns.com', guardians: 'MLB.com' },
+    id: 'team', name: 'Team site', domains: ['clevelandbrowns.com', 'mlb.com', '49ers.com', 'raiders.com', 'nhl.com'], scope: 'official',
+    names: { browns: 'ClevelandBrowns.com', guardians: 'MLB.com', niners: '49ers.com', raiders: 'Raiders.com', giants: 'MLB.com', athletics: 'MLB.com', sharks: 'NHL.com' },
     // NBA.com (Cavs) refuses these requests (HTTP 403), so there's no Cavs team-site feed.
     feeds: {
       browns:    ['https://www.clevelandbrowns.com/rss/news', 'https://www.clevelandbrowns.com/news/rss'],
       guardians: ['https://www.mlb.com/guardians/feeds/news/rss.xml'],
+      niners:    ['https://www.49ers.com/rss/news'],
+      raiders:   ['https://www.raiders.com/rss/news'],
+      giants:    ['https://www.mlb.com/giants/feeds/news/rss.xml'],
+      athletics: ['https://www.mlb.com/athletics/feeds/news/rss.xml'],
+      sharks:    ['https://www.nhl.com/sharks/rss/news', 'https://www.nhl.com/sharks/news/rss'],
     },
   },
   {
@@ -71,6 +89,43 @@ export const RSS_SOURCES = [
       cavs:      ['https://www.news5cleveland.com/sports/cavs.rss', { url: 'https://www.news5cleveland.com/sports.rss', filter: true }],
       guardians: ['https://www.news5cleveland.com/sports/guardians.rss', { url: 'https://www.news5cleveland.com/sports.rss', filter: true }],
     },
+  },
+  // ---- Bay Area outlets ----
+  {
+    id: 'mercury', name: 'The Mercury News', domains: ['mercurynews.com'],
+    feeds: {
+      warriors:  ['https://www.mercurynews.com/sports/warriors/feed/'],
+      niners:    ['https://www.mercurynews.com/sports/49ers/feed/'],
+      giants:    ['https://www.mercurynews.com/sports/giants/feed/'],
+      sharks:    ['https://www.mercurynews.com/sports/sharks/feed/'],
+      athletics: ['https://www.mercurynews.com/sports/oakland-athletics/feed/', 'https://www.mercurynews.com/sports/athletics/feed/'],
+      raiders:   ['https://www.mercurynews.com/sports/raiders/feed/'],
+    },
+  },
+  {
+    id: 'chronicle', name: 'SF Chronicle', domains: ['sfchronicle.com'],
+    feeds: {
+      warriors:  ['https://www.sfchronicle.com/sports/warriors/feed/', { url: 'https://www.sfchronicle.com/sports/feed/', filter: true }],
+      niners:    ['https://www.sfchronicle.com/sports/49ers/feed/', { url: 'https://www.sfchronicle.com/sports/feed/', filter: true }],
+      giants:    ['https://www.sfchronicle.com/sports/giants/feed/', { url: 'https://www.sfchronicle.com/sports/feed/', filter: true }],
+      sharks:    ['https://www.sfchronicle.com/sports/sharks/feed/', { url: 'https://www.sfchronicle.com/sports/feed/', filter: true }],
+      athletics: ['https://www.sfchronicle.com/sports/athletics/feed/', { url: 'https://www.sfchronicle.com/sports/feed/', filter: true }],
+      raiders:   ['https://www.sfchronicle.com/sports/raiders/feed/', { url: 'https://www.sfchronicle.com/sports/feed/', filter: true }],
+    },
+  },
+  {
+    id: 'nbcsba', name: 'NBC Sports Bay Area', domains: ['nbcsportsbayarea.com', 'nbcsports.com'],
+    feeds: {
+      warriors:  ['https://www.nbcsportsbayarea.com/nba/golden-state-warriors/feed/', { url: 'https://www.nbcsportsbayarea.com/feed/', filter: true }],
+      niners:    ['https://www.nbcsportsbayarea.com/nfl/san-francisco-49ers/feed/', { url: 'https://www.nbcsportsbayarea.com/feed/', filter: true }],
+      giants:    ['https://www.nbcsportsbayarea.com/mlb/san-francisco-giants/feed/', { url: 'https://www.nbcsportsbayarea.com/feed/', filter: true }],
+      sharks:    ['https://www.nbcsportsbayarea.com/nhl/san-jose-sharks/feed/', { url: 'https://www.nbcsportsbayarea.com/feed/', filter: true }],
+      athletics: ['https://www.nbcsportsbayarea.com/mlb/oakland-athletics/feed/', { url: 'https://www.nbcsportsbayarea.com/feed/', filter: true }],
+    },
+  },
+  {
+    id: 'rj', name: 'Las Vegas Review-Journal', domains: ['reviewjournal.com'],
+    feeds: { raiders: ['https://www.reviewjournal.com/sports/raiders/feed/'] },
   },
   // Threads (team accounts) will go here once the Meta app is approved for profile discovery.
 ];

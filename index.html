@@ -16,7 +16,7 @@
   --bg:#f6f5f2;--surface:#ffffff;--surface-2:#f0eee9;--border:#e2dfd8;--text:#1b1a18;--muted:#6b675f;--faint:#9a958b;
   --accent:#e4572e;--live:#d7263d;--good:#1f8a4c;--warn:#b45309;--focus:#2563eb;
   --cavs:#860038;--browns:#ff3c00;--guardians:#00385d;
-  --warriors:#1d428a;--niners:#aa0000;--sharks:#006d75;
+  --warriors:#1d428a;--niners:#aa0000;--sharks:#006d75;--giants:#e3521b;--athletics:#0f5a3c;--raiders:#5d6166;
   --shadow:0 1px 2px rgba(0,0,0,.05),0 2px 8px rgba(0,0,0,.04);
   --field:#2f7d3a;--field-line:rgba(255,255,255,.55);--zone:#1b1a18;
 }
@@ -24,14 +24,14 @@
   --bg:#121212;--surface:#1c1c1e;--surface-2:#26262a;--border:#333338;--text:#f1efe9;--muted:#a7a39a;--faint:#77746d;
   --accent:#ff7a50;--live:#ff4d61;--good:#4cc27e;--warn:#f5a524;--focus:#7aa2ff;
   --cavs:#c23a6e;--browns:#ff6a33;--guardians:#4d8fc4;
-  --warriors:#5b8ee6;--niners:#e0484d;--sharks:#2bb3bd;
+  --warriors:#5b8ee6;--niners:#e0484d;--sharks:#2bb3bd;--giants:#fd7a45;--athletics:#3aa874;--raiders:#a5acaf;
   --shadow:none;--field:#24612d;--zone:#f1efe9;
 }}
 :root[data-theme="dark"]{
   --bg:#121212;--surface:#1c1c1e;--surface-2:#26262a;--border:#333338;--text:#f1efe9;--muted:#a7a39a;--faint:#77746d;
   --accent:#ff7a50;--live:#ff4d61;--good:#4cc27e;--warn:#f5a524;--focus:#7aa2ff;
   --cavs:#c23a6e;--browns:#ff6a33;--guardians:#4d8fc4;
-  --warriors:#5b8ee6;--niners:#e0484d;--sharks:#2bb3bd;
+  --warriors:#5b8ee6;--niners:#e0484d;--sharks:#2bb3bd;--giants:#fd7a45;--athletics:#3aa874;--raiders:#a5acaf;
   --shadow:none;--field:#24612d;--zone:#f1efe9;
 }
 *{box-sizing:border-box}
@@ -45,6 +45,11 @@ button{font:inherit;color:inherit}
 header.top{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--border)}
 header.top .wrap{display:flex;align-items:center;gap:12px;padding-top:calc(12px + env(safe-area-inset-top));padding-bottom:12px}
 .brand{font-weight:800;font-size:18px;letter-spacing:-.01em;text-decoration:none;display:flex;align-items:center;gap:8px}
+.brand select{font:inherit;font-weight:800;font-size:18px;letter-spacing:-.01em;color:var(--text);background:transparent;border:none;padding:2px 22px 2px 0;cursor:pointer;
+  appearance:none;-webkit-appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);
+  background-position:calc(100% - 9px) 55%,calc(100% - 4px) 55%;background-size:5px 5px,5px 5px;background-repeat:no-repeat}
+.brand select option{color:#000;font-size:15px;font-weight:600}
+.visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .brand .dot{width:10px;height:10px;border-radius:3px;background:linear-gradient(135deg,var(--cavs),var(--browns) 50%,var(--guardians))}
 .spacer{flex:1}
 .updated{color:var(--faint);font-size:12px;white-space:nowrap}
@@ -225,7 +230,7 @@ table.stand tr.me td{background:color-mix(in srgb,var(--accent) 12%,var(--surfac
 table.stand tr.cut td{border-bottom:2px dashed var(--muted)}
 .seed{display:inline-block;width:18px;color:var(--faint);font-size:12px;text-align:right}
 sup.clinch{font-size:10px;color:var(--muted);font-weight:700}
-.quick{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:16px 0 4px}
+.quick{display:grid;grid-template-columns:repeat(auto-fit,minmax(104px,1fr));gap:10px;margin:16px 0 4px}
 .qteam{display:flex;flex-direction:column;align-items:center;gap:4px;padding:12px 8px 10px;background:var(--surface);border:1px solid var(--border);border-top:4px solid var(--tc);border-radius:12px;box-shadow:var(--shadow);text-decoration:none;text-align:center}
 .qteam:hover{border-color:var(--faint);border-top-color:var(--tc)}
 .qteam img{width:44px;height:44px;object-fit:contain;transition:transform .12s}
@@ -272,7 +277,8 @@ details.acc .tablewrap{max-width:620px}
 </head>
 <body>
 <header class="top"><div class="wrap">
-  <a class="brand" href="#/"><span class="dot"></span>Cleveland Sports</a>
+  <label class="brand"><span class="dot"></span><span class="visually-hidden">Teams</span>
+    <select id="view" aria-label="Choose teams"></select></label>
   <span class="spacer"></span>
   <span class="updated" id="updated"></span>
   <button class="iconbtn" id="refresh" title="Refresh now" aria-label="Refresh now">↻</button>
@@ -282,17 +288,20 @@ details.acc .tablewrap{max-width:620px}
 <script>
 /* ---------- Config: your teams ---------- */
 // Each view is a set of teams. Cleveland is the default; open ?view=bayarea (or the bayarea/ folder) for the other one.
-// news:true shows the news feed, which scripts/news.mjs collects for the Cleveland teams only.
+// news:true shows the news feed collected by scripts/news.mjs (its TEAMS list must include the view's team keys).
 const VIEWS = {
   cleveland: { name:'Cleveland Sports', short:'CLE Sports', local:'Cleveland-area', icon:'icon-180.png', news:true, teams:[
     { key:'cavs',      label:'Cavaliers', league:'nba', sport:'basketball', abbr:'cle', id:'5', color:'var(--cavs)' },
     { key:'browns',    label:'Browns',    league:'nfl', sport:'football',   abbr:'cle', id:'5', color:'var(--browns)' },
     { key:'guardians', label:'Guardians', league:'mlb', sport:'baseball',   abbr:'cle', id:'5', color:'var(--guardians)' },
   ]},
-  bayarea: { name:'Bay Area Sports', short:'Bay Sports', local:'Bay Area', icon:'icon-bayarea-180.png', teams:[
+  bayarea: { name:'Bay Area Sports', short:'Bay Sports', local:'Bay Area', icon:'icon-bayarea-180.png', news:true, teams:[
     { key:'warriors',  label:'Warriors',  league:'nba', sport:'basketball', abbr:'gs',  id:'9',  color:'var(--warriors)' },
     { key:'niners',    label:'49ers',     league:'nfl', sport:'football',   abbr:'sf',  id:'25', color:'var(--niners)' },
+    { key:'giants',    label:'Giants',    league:'mlb', sport:'baseball',   abbr:'sf',  id:'26', color:'var(--giants)' },
     { key:'sharks',    label:'Sharks',    league:'nhl', sport:'hockey',     abbr:'sj',  id:'18', color:'var(--sharks)' },
+    { key:'athletics', label:'Athletics', league:'mlb', sport:'baseball',   abbr:'ath', id:'11', color:'var(--athletics)' },
+    { key:'raiders',   label:'Raiders',   league:'nfl', sport:'football',   abbr:'lv',  id:'13', color:'var(--raiders)' },
   ]},
 };
 const VIEW_KEY = Object.hasOwn(VIEWS, new URLSearchParams(location.search).get('view')) ? new URLSearchParams(location.search).get('view') : 'cleveland';
@@ -300,7 +309,13 @@ const VIEW = VIEWS[VIEW_KEY];
 const TEAMS = VIEW.teams;
 // The page's title, header and home-screen name/icon follow the view.
 document.title = VIEW.name;
-document.querySelector('.brand').lastChild.textContent = VIEW.name;
+// Header title is a selector; choosing another view reloads the page with ?view=… (Cleveland is the plain address).
+(() => {
+  const sel = document.getElementById('view');
+  sel.innerHTML = Object.entries(VIEWS).map(([k, v]) => `<option value="${k}">${v.name}</option>`).join('');
+  sel.value = VIEW_KEY;
+  sel.onchange = () => { location.href = `${location.pathname}${sel.value === 'cleveland' ? '' : `?view=${sel.value}`}#/`; };
+})();
 document.querySelector('.brand .dot').style.background = `linear-gradient(135deg,${TEAMS.map(t => t.color).join(',')})`;
 document.querySelector('meta[name="apple-mobile-web-app-title"]').content = VIEW.short;
 document.querySelectorAll('link[rel="apple-touch-icon"],link[rel="icon"]').forEach(l => l.href = VIEW.icon);
@@ -2034,7 +2049,7 @@ function newsBlock({ team, limit, home }){
       : newsState.missing ? 'News will appear here after the first collection run.' : `Couldn't load news (${newsState.error}).`;
     return head + `<div class="empty">${esc(msg)}</div>`;
   }
-  let items = newsState.data.items || [];
+  let items = (newsState.data.items || []).filter(i => TEAMS.some(t => t.key === i.team));
   if (team) items = items.filter(i => i.team === team);
   const srcs = [...new Map(items.map(i => [i.source, i.sourceName])).entries()];
   if (!srcs.some(([id]) => id === newsState.source)) newsState.source = 'all';
@@ -2056,8 +2071,9 @@ function newsBlock({ team, limit, home }){
   const shown = items.slice(0, limit);
   const chips = srcs.length > 1 ? `<div class="pchips">${[['all', 'All sources'], ...srcs].map(([id, name]) =>
     `<button class="chip" data-nsrc="${esc(id)}" aria-pressed="${newsState.source === id}">${esc(name)}</button>`).join('')}</div>` : '';
-  const failed = (newsState.data.sources || []).filter(x => !x.ok && (!team || x.team === team));
-  const okNames = [...new Set((newsState.data.sources || []).filter(x => x.ok && x.count && (!team || x.team === team)).map(x => x.name))];
+  const inView = x => TEAMS.some(t => t.key === x.team) && (!team || x.team === team);
+  const failed = (newsState.data.sources || []).filter(x => !x.ok && inView(x));
+  const okNames = [...new Set((newsState.data.sources || []).filter(x => x.ok && x.count && inView(x)).map(x => x.name))];
   return head + chips + latest + (shown.length ? `<div class="newslist">${shown.map(i => newsItem(i, !team)).join('')}</div>` : `<div class="empty">No recent stories${newsState.source !== 'all' ? ' from this source' : ''}.</div>`)
     + (items.length > shown.length && home ? `<button class="iconbtn more" data-nmore>Show more news</button>` : '')
     + `<div class="note">From ${esc(okNames.join(', ') || 'no sources yet')}.${failed.length ? ` Not reachable right now: ${esc([...new Set(failed.map(x => x.name))].join(', '))}.` : ''}</div>`;
