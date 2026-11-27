@@ -214,6 +214,14 @@ details.acc>summary{grid-template-columns:1fr auto}
 .plays li.new{animation:newplay 3s ease-out}
 @keyframes newplay{0%{background:color-mix(in srgb,var(--accent) 22%,transparent)}100%{background:transparent}}
 @media (prefers-reduced-motion:reduce){.plays li.new{animation:none;background:color-mix(in srgb,var(--accent) 10%,transparent)}.livebar .dot{animation:none}}
+table.stand td.pl{max-width:none;min-width:150px}
+table.stand .tcell{display:flex;align-items:center;gap:6px}
+table.stand td.pl .tlink{gap:8px}
+table.stand td.pl .logo{width:20px;height:20px}
+table.stand tr.me td{background:color-mix(in srgb,var(--accent) 12%,var(--surface));font-weight:700}
+table.stand tr.cut td{border-bottom:2px dashed var(--muted)}
+.seed{display:inline-block;width:18px;color:var(--faint);font-size:12px;text-align:right}
+sup.clinch{font-size:10px;color:var(--muted);font-weight:700}
 .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}
 .tile{background:var(--surface-2);border-radius:10px;padding:10px 12px}
 .tile .tv{font-size:20px;font-weight:800;letter-spacing:-.01em}
@@ -1149,13 +1157,15 @@ function seasonLabel(league, y){ return league === 'nba' ? `${y-1}–${String(y)
 
 async function showTeam(league, id, tab){
   const fresh = tview.league !== league || tview.id !== id;
-  if (fresh) Object.assign(tview, { league, id, schedCurrent:null, statCurrent:null, season:null, info:null, sched:null, stats:null, players:null, statSeason:null, stype:2, nba:null, l10:null, cat:null, sort:null, allCols:false, note:'' });
+  if (fresh) Object.assign(tview, { league, id, schedCurrent:null, statCurrent:null, season:null, info:null, sched:null, stats:null, players:null, statSeason:null, stype:2, nba:null, l10:null, cat:null, sort:null, allCols:false, note:'',
+    stand:null, standSeason:null, standCurrent:null, standNote:'' });
   tview.tab = tab || 'schedule';
   if (!tview.info) $('#app').innerHTML = `<a class="back" href="#/">← All games</a><div class="loading">Loading team…</div>`;
   const base = `${API}/${SPORT[league]}/${league}/teams/${id}`;
   try {
     if (!tview.info) tview.info = (await getJSON(`${base}/schedule?seasontype=2`)).team;
     if (tview.tab === 'schedule') await loadTeamSchedule(base);
+    else if (tview.tab === 'standings') await loadStandings();
     else await loadTeamStats(base);
     const r = currentRoute();
     if (r.name !== 'team' || r.id !== id) return;
@@ -1244,7 +1254,7 @@ function renderTeam(){
   const rec = t.recordSummary || '';
   const color = hexColor(t.color) || 'var(--accent)';
   document.title = `${t.displayName} · Cleveland Sports`;
-  const body = tview.tab === 'schedule' ? renderTeamSchedule() : renderTeamStatsPage();
+  const body = tview.tab === 'schedule' ? renderTeamSchedule() : tview.tab === 'standings' ? renderStandings() : renderTeamStatsPage();
   $('#app').innerHTML = `<a class="back" href="#/">← All games</a>
     <div class="team-hero" style="--tc:${color}">
       ${img(logoOf(t), 'tlogo', t.abbreviation)}
@@ -1254,6 +1264,7 @@ function renderTeam(){
     <div class="tabs" role="tablist">
       <a class="tab" role="tab" href="#/t/${league}/${esc(t.id)}" aria-selected="${tview.tab === 'schedule'}">Schedule</a>
       <a class="tab" role="tab" href="#/t/${league}/${esc(t.id)}/stats" aria-selected="${tview.tab === 'stats'}">Team Stats</a>
+      <a class="tab" role="tab" href="#/t/${league}/${esc(t.id)}/standings" aria-selected="${tview.tab === 'standings'}">Standings</a>
     </div>${body}`;
   wireTeam();
 }
@@ -1440,9 +1451,11 @@ function renderPlayerStats(){
 }
 function wireTeam(){
   const app = $('#app');
+  app.querySelectorAll('[data-sview]').forEach(b => b.onclick = () => { tview.sview = b.dataset.sview; store.set('standView', tview.sview); renderTeam(); });
   app.querySelectorAll('[data-season]').forEach(s => s.onchange = () => {
     const y = Number(s.value);
-    if (tview.tab === 'schedule') { tview.season = y; tview.sched = null; }
+    if (tview.tab === 'standings') { tview.standSeason = y; tview.stand = null; }
+    else if (tview.tab === 'schedule') { tview.season = y; tview.sched = null; }
     else { tview.statSeason = y; tview.sort = null; }
     showTeam(tview.league, tview.id, tview.tab);
   });
@@ -1635,11 +1648,122 @@ function nbaOverall(){
   </div>`;
 }
 
+
+/* ---------- Standings ---------- */
+const STAND_COLS = {
+  nba:[['wins','W'],['losses','L'],['winPercent','PCT'],['_gb','GB'],['Home','HOME'],['Road','ROAD'],['vs. Conf.','CONF'],['Last Ten Games','L10'],['streak','STRK'],['differential','DIFF']],
+  nfl:[['wins','W'],['losses','L'],['ties','T'],['winPercent','PCT'],['Home','HOME'],['Road','AWAY'],['divisionRecord','DIV'],['vs. Conf.','CONF'],['pointsFor','PF'],['pointsAgainst','PA'],['differential','DIFF'],['streak','STRK']],
+  mlb:[['wins','W'],['losses','L'],['winPercent','PCT'],['_gb','GB'],['Home','HOME'],['Road','AWAY'],['Last Ten Games','L10'],['streak','STRK'],['pointsFor','RS'],['pointsAgainst','RA'],['pointDifferential','DIFF']],
+};
+// Playoff cut lines in the conference/league view: [after seed, label]
+const PLAYOFF_LINES = { nba:[[6, 'Playoffs'], [10, 'Play-in']], nfl:[[7, 'Playoffs']], mlb:[[6, 'Playoffs']] };
+// ESPN's clinch letters differ by league
+const CLINCH_BY = {
+  nba:{ x:'clinched playoffs', y:'clinched division', z:'clinched top seed in conference', '*':'clinched best record in league', pb:'clinched play-in', pi:'clinched play-in', e:'eliminated' },
+  nfl:{ x:'clinched playoffs', y:'clinched wild card', z:'clinched division', '*':'clinched top seed and bye', e:'eliminated' },
+  mlb:{ x:'clinched division', y:'clinched wild card', z:'clinched playoffs', w:'clinched wild card', '*':'clinched best record / home field', e:'eliminated' },
+};
+const clinchText = m => CLINCH_BY[tview.league]?.[m] || '';
+async function loadStandings(){
+  if (tview.stand) return;
+  const url = y => `https://site.api.espn.com/apis/v2/sports/${SPORT[tview.league]}/${tview.league}/standings?level=3${y ? `&season=${y}` : ''}`;
+  const played = d => (d.children || []).flatMap(c => c.children || []).flatMap(dv => dv.standings?.entries || [])
+    .some(e => (e.stats || []).some(x => (x.name === 'wins' || x.name === 'losses') && x.value > 0));
+  let d = await getJSON(url(tview.standSeason));
+  let year = tview.standSeason || d.season?.year;
+  tview.standNote = '';
+  if (!tview.standSeason && year) {
+    // ask for the season explicitly (the default can mix seasons in the offseason)
+    const cur = await getJSON(url(year)).catch(() => null);
+    if (cur && played(cur)) d = cur;
+    else {
+      const prev = await getJSON(url(year - 1)).catch(() => null);
+      if (prev && played(prev)) { tview.standNote = `The ${seasonLabel(tview.league, year)} season hasn't started, so this shows ${seasonLabel(tview.league, year - 1)}.`; d = prev; year = year - 1; }
+    }
+  }
+  tview.standCurrent ||= tview.standNote ? year + 1 : year;
+  tview.standSeason ||= year;
+  tview.stand = d;
+}
+function standRows(entries){
+  return entries.map(e => {
+    const st = {};
+    for (const x of e.stats || []) st[x.name] = x;
+    const w = st.wins?.value ?? 0, l = st.losses?.value ?? 0, t = st.ties?.value ?? 0;
+    const pct = st.winPercent?.value ?? (w + l + t ? (w + t / 2) / (w + l + t) : 0);
+    return { id:String(e.team?.id), abbr:e.team?.abbreviation, name:e.team?.displayName, short:e.team?.shortDisplayName || e.team?.name,
+             logo:logoOf(e.team), w, l, t, pct, seed:st.playoffSeed?.value, clinch:st.clincher?.displayValue || '', st };
+  });
+}
+const byRecord = (a, b) => b.pct - a.pct || b.w - a.w || a.l - b.l || (a.seed ?? 99) - (b.seed ?? 99);
+function standTable(title, rows, opts={}){
+  const L = tview.league, cols = STAND_COLS[L];
+  const lead = rows[0];
+  const gb = r => { if (!lead) return ''; const v = ((lead.w - r.w) + (r.l - lead.l)) / 2; return v <= 0 ? '–' : (v % 1 ? v.toFixed(1) : String(v)); };
+  const lines = opts.lines ? Object.fromEntries(PLAYOFF_LINES[L].map(([n, label]) => [n, label])) : {};
+  const me = String(tview.id);
+  const body = rows.map((r, i) => {
+    const cells = cols.map(([k]) => {
+      if (k === '_gb') return gb(r);
+      const x = r.st[k];
+      if (!x) return '';
+      if (k === 'winPercent') return (x.value ?? 0).toFixed(3).replace(/^0/, '');
+      return x.displayValue ?? x.value ?? '';
+    });
+    const cut = lines[i + 1] && i < rows.length - 1 ? ` cut` : '';
+    const mark = r.clinch ? `<sup class="clinch" title="${esc(clinchText(r.clinch) || r.clinch)}">${esc(r.clinch)}</sup>` : '';
+    return `<tr class="${r.id === me ? 'me' : ''}${cut}" ${cut ? `data-cut="${esc(lines[i + 1])}"` : ''}>
+      <td class="pl"><div class="tcell">${opts.lines ? `<span class="seed">${i + 1}</span>` : ''}<a class="tlink" href="#/t/${L}/${esc(r.id)}">${img(r.logo, 'logo', r.abbr)}<span>${esc(r.short)}</span></a>${mark}</div></td>
+      ${cells.map(c => `<td>${esc(c)}</td>`).join('')}</tr>`;
+  }).join('');
+  return `<div class="box"><h3>${esc(title)}</h3><div class="tablewrap"><table class="stand"><thead><tr><th>Team</th>${cols.map(([, h]) => `<th>${esc(h)}</th>`).join('')}</tr></thead>
+    <tbody>${body}</tbody></table></div>
+    ${opts.lines ? `<div class="note">${PLAYOFF_LINES[L].map(([n, label]) => `Line after ${ordinal(n)}: ${label.toLowerCase()} cutoff`).join(' · ')}. Order follows ESPN's playoff seeding when available.</div>` : ''}</div>`;
+}
+function renderStandings(){
+  const d = tview.stand;
+  const confs = (d?.children || []).filter(c => (c.children || []).length);
+  if (!confs.length) return `<div class="empty">Standings aren't available for this season.</div>`;
+  const me = String(tview.id);
+  const has = n => (n.children || []).some(dv => (dv.standings?.entries || []).some(e => String(e.team?.id) === me))
+                || (n.standings?.entries || []).some(e => String(e.team?.id) === me);
+  const myConf = confs.find(has) || confs[0];
+  const view = tview.sview || store.get('standView', 'division');
+  const confWord = tview.league === 'mlb' ? 'League' : 'Conference';
+  const views = [['division', 'Division'], ['conference', confWord], ['league', 'Full league']];
+  let out = '';
+  if (view === 'conference') {
+    // my conference first, then the other
+    for (const c of [myConf, ...confs.filter(x => x !== myConf)]) {
+      const rows = standRows((c.children || []).flatMap(dv => dv.standings?.entries || []));
+      const seeded = rows.every(r => r.seed != null) && new Set(rows.map(r => r.seed)).size === rows.length;
+      rows.sort(seeded ? (a, b) => a.seed - b.seed : byRecord);
+      out += standTable(c.name, rows, { lines:true });
+    }
+  } else if (view === 'league') {
+    const rows = standRows(confs.flatMap(c => (c.children || []).flatMap(dv => dv.standings?.entries || []))).sort(byRecord);
+    out += standTable(d.name || 'League', rows);
+  } else {
+    const divs = confs.flatMap(c => c.children || []);
+    const mine = divs.find(has);
+    // my division first, then the rest of my conference, then the other conference
+    const order = [mine, ...(myConf.children || []).filter(x => x !== mine), ...confs.filter(c => c !== myConf).flatMap(c => c.children || [])].filter(Boolean);
+    for (const dv of order) out += standTable(dv.name, standRows(dv.standings?.entries || []).sort(byRecord));
+  }
+  const marks = new Set(confs.flatMap(c => (c.children || []).flatMap(dv => dv.standings?.entries || []))
+    .map(e => (e.stats || []).find(x => x.name === 'clincher')?.displayValue).filter(Boolean));
+  return `<div class="toolbar">${seasonSelect(tview.standCurrent, tview.standSeason)}
+      <span class="pchips" style="margin:0">${views.map(([v, l]) => `<button class="chip" data-sview="${v}" aria-pressed="${view === v}">${l}</button>`).join('')}</span></div>
+    ${tview.standNote ? `<div class="note" style="margin:0 0 12px">${esc(tview.standNote)}</div>` : ''}
+    <div class="panel">${out}</div>
+    ${marks.size ? `<div class="note">${[...marks].map(m => `<b>${esc(m)}</b> ${esc(clinchText(m))}`).join(' · ')}</div>` : ''}`;
+}
+
 /* ---------- Router ---------- */
 function currentRoute(){
   let m = location.hash.match(/^#\/g\/(nba|nfl|mlb)\/(\d+)/);
   if (m) return { name:'game', league:m[1], id:m[2] };
-  m = location.hash.match(/^#\/t\/(nba|nfl|mlb)\/(\d+)(?:\/(stats))?/);
+  m = location.hash.match(/^#\/t\/(nba|nfl|mlb)\/(\d+)(?:\/(stats|standings))?/);
   if (m) return { name:'team', league:m[1], id:m[2], tab:m[3] || 'schedule' };
   return { name:'home' };
 }
@@ -1655,7 +1779,7 @@ window.addEventListener('hashchange', route);
 $('#refresh').onclick = () => {
   const r = currentRoute(); clearTimeout(timer);
   if (r.name === 'game') showGame(r.league, r.id);
-  else if (r.name === 'team') { tview.sched = null; tview.stats = null; showTeam(r.league, r.id, r.tab); }
+  else if (r.name === 'team') { tview.sched = null; tview.stats = null; tview.stand = null; showTeam(r.league, r.id, r.tab); }
   else showHome();
 };
 document.addEventListener('visibilitychange', () => { if (!document.hidden) $('#refresh').click(); });
