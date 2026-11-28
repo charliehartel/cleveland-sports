@@ -20,7 +20,6 @@ export const TEAMS = {
   niners:    { league: 'nfl', sport: 'football',   espnId: '25', words: ['49ers', 'niners'], paths: ['49ers', 'san-francisco-49ers'] },
   giants:    { league: 'mlb', sport: 'baseball',   espnId: '26', words: ['giants'], not: ['ny giants', 'new york giants', 'big blue', '49ers', 'niners'], paths: ['giants', 'sf-giants', 'san-francisco-giants'] },
   sharks:    { league: 'nhl', sport: 'hockey',     espnId: '18', words: ['sharks'], paths: ['sharks', 'san-jose-sharks'] },
-  athletics: { league: 'mlb', sport: 'baseball',   espnId: '11', words: ['athletics', "a's"], paths: ['athletics', 'oakland-athletics', 'as'] },
   valkyries: { league: 'wnba', sport: 'basketball', espnId: '129689', words: ['valkyries'], paths: ['valkyries', 'golden-state-valkyries'] },
   stanford:  { league: 'college-football', sport: 'football', espnId: '24', words: ['stanford'], paths: ['stanford', 'stanford-cardinal'] },
   // New York
@@ -54,7 +53,6 @@ export const RSS_SOURCES = [
       niners:    ['https://www.nytimes.com/athletic/rss/nfl/niners/'],   // /nfl/49ers/ and /nfl/san-francisco-49ers/ return 404
       giants:    ['https://www.nytimes.com/athletic/rss/mlb/sf-giants/'], // /mlb/giants/ returns 404
       sharks:    ['https://www.nytimes.com/athletic/rss/nhl/sharks/'],
-      athletics: ['https://www.nytimes.com/athletic/rss/mlb/athletics/'],
       valkyries: ['https://www.nytimes.com/athletic/rss/wnba/valkyries/'],
       mets:      ['https://www.nytimes.com/athletic/rss/mlb/mets/'],
       nygiants:  ['https://www.nytimes.com/athletic/rss/nfl/giants/', 'https://www.nytimes.com/athletic/rss/nfl/ny-giants/'],
@@ -81,7 +79,6 @@ export const RSS_SOURCES = [
     feeds: {
       guardians: ['https://www.mlb.com/guardians/feeds/news/rss.xml'],
       giants:    ['https://www.mlb.com/giants/feeds/news/rss.xml'],
-      athletics: ['https://www.mlb.com/athletics/feeds/news/rss.xml'],
       mets:      ['https://www.mlb.com/mets/feeds/news/rss.xml'],
       yankees:   ['https://www.mlb.com/yankees/feeds/news/rss.xml'],
     },
@@ -119,7 +116,6 @@ export const RSS_SOURCES = [
       niners:    ['https://www.nbcsportsbayarea.com/nfl/san-francisco-49ers/feed/', { url: 'https://www.nbcsportsbayarea.com/feed/', filter: true }],
       giants:    ['https://www.nbcsportsbayarea.com/mlb/san-francisco-giants/feed/', { url: 'https://www.nbcsportsbayarea.com/feed/', filter: true }],
       sharks:    ['https://www.nbcsportsbayarea.com/nhl/san-jose-sharks/feed/', { url: 'https://www.nbcsportsbayarea.com/feed/', filter: true }],
-      athletics: ['https://www.nbcsportsbayarea.com/mlb/oakland-athletics/feed/', { url: 'https://www.nbcsportsbayarea.com/feed/', filter: true }],
       valkyries: ['https://www.nbcsportsbayarea.com/wnba/golden-state-valkyries/feed/', { url: 'https://www.nbcsportsbayarea.com/feed/', filter: true }],
     },
   },

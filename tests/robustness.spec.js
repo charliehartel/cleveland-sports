@@ -1,7 +1,7 @@
 // How the app behaves when ESPN data is unusual: shared games, failures, hung requests. All ESPN data here is simulated.
 const fs = require('fs');
 const path = require('path');
-const { test, expect, ready } = require('./helpers');
+const { test, expect, ready, withPairView } = require('./helpers');
 
 const json = (r, body, status = 200) => r.fulfill({ status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(body) });
 const noNews = page => page.route(/raw\.githubusercontent\.com\/.*news\.json/, r => r.fulfill({ status: 404, headers: { 'access-control-allow-origin': '*' }, body: 'Not Found' }));
@@ -11,8 +11,9 @@ const shared = () => ({ id: '401999001', date: new Date(Date.now() + 2 * 864e5).
   { homeAway: 'home', team: { id: '11', abbreviation: 'ATH', displayName: 'Athletics', shortDisplayName: 'Athletics' } },
   { homeAway: 'away', team: { id: '26', abbreviation: 'SF', displayName: 'San Francisco Giants', shortDisplayName: 'Giants' } }] }] });
 
-test('Bay Area home: Giants vs Athletics is one card, under both filters, from one MLB scoreboard request', async ({ page }) => {
+test('two teams in one league: their game is one card, under both filters, from one scoreboard request', async ({ page }) => {
   let mlbBoards = 0;
+  await withPairView(page);
   await noNews(page);
   await page.route(/site\.api\.espn\.com/, r => {
     const u = r.request().url();
@@ -20,7 +21,7 @@ test('Bay Area home: Giants vs Athletics is one card, under both filters, from o
     if (/baseball\/mlb\/scoreboard$/.test(u)) mlbBoards++;
     return json(r, { events: [] });
   });
-  await page.goto('/?view=bayarea#/');
+  await page.goto('/?view=pair#/');
   await ready(page, '.card');
   await expect(page.locator('.card')).toHaveCount(1);
   expect(mlbBoards).toBe(1);
@@ -28,8 +29,6 @@ test('Bay Area home: Giants vs Athletics is one card, under both filters, from o
     await page.locator(`[data-filter="${team}"]`).click();
     await expect(page.locator('.card')).toHaveCount(1);
   }
-  await page.locator('[data-filter="warriors"]').click();
-  await expect(page.locator('.card')).toHaveCount(0);
   await page.locator('[data-filter="all"]').click();
 });
 

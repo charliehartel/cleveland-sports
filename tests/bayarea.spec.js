@@ -1,9 +1,9 @@
 // Views: Cleveland (default) and Bay Area (?view=bayarea), chosen from the header title.
 const { test, expect, ready } = require('./helpers');
 
-const BAY = ['Warriors', '49ers', 'Giants', 'Sharks', 'Athletics', 'Valkyries', 'Stanford'];
+const BAY = ['Warriors', '49ers', 'Giants', 'Sharks', 'Valkyries', 'Stanford'];
 
-test('Bay Area view shows its seven teams and its own title', async ({ page }) => {
+test('Bay Area view shows its six teams and its own title', async ({ page }) => {
   await page.goto('/?view=bayarea#/');
   await ready(page, '.quick');
   await expect(page).toHaveTitle('My Sports · Bay Area');

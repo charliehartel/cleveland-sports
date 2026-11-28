@@ -48,4 +48,18 @@ async function ready(page, selector) {
   await page.waitForSelector(selector, { timeout: 45_000 });
 }
 
-module.exports = { test, expect, ready, relay };
+// No real view follows two teams in one league any more, but the app still supports it (one card for a game between them,
+// one shared scoreboard request). This serves the page with an extra test-only view, ?view=pair: the Giants and the Athletics.
+async function withPairView(page) {
+  await page.route(/^http:\/\/127\.0\.0\.1:4173\/(index\.html)?(\?[^#]*)?$/, async route => {
+    const response = await route.fetch();
+    const body = (await response.text()).replace('const VIEWS = {', `const VIEWS = {
+  pair: { name:'Pair', local:'Bay Area', news:false, teams:[
+    { key:'giants',    label:'Giants',    league:'mlb', sport:'baseball', abbr:'sf',  id:'26', color:'#e3521b' },
+    { key:'athletics', label:'Athletics', league:'mlb', sport:'baseball', abbr:'ath', id:'11', color:'#0f5a3c' },
+  ]},`);
+    await route.fulfill({ response, body });
+  });
+}
+
+module.exports = { test, expect, ready, relay, withPairView };
