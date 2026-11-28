@@ -573,8 +573,14 @@ function mergeGames(lists){
   for (const g of lists.flat()) {
     const id = `${g.league}:${g.id}`;
     const had = byId.get(id);
-    if (had) { if (!had.keys.includes(g.team.key)) had.keys.push(g.team.key); }
-    else byId.set(id, { ...g, keys:[g.team.key] });
+    if (!had) {
+      byId.set(id, { ...g, keys:[g.team.key] });
+      continue;
+    }
+    if (!had.keys.includes(g.team.key)) had.keys.push(g.team.key);
+    if (had.completed && g.completed && g.fetchedAt > had.fetchedAt) {
+      byId.set(id, { ...g, team:had.team, keys:had.keys });
+    }
   }
   return [...byId.values()];
 }

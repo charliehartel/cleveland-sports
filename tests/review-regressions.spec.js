@@ -432,3 +432,35 @@ test('a corrected final from a refreshed schedule wins over an older cached scor
   await expect(page.locator('#updated')).toHaveText('ESPN updates delayed');
   await expect(scores).toHaveText(['97', '101']);
 });
+
+test('a corrected final from either tracked team updates their shared card', async ({ page }) => {
+  let outage = false;
+  const result = score => ({
+    id:EVENT,
+    date:new Date().toISOString(),
+    competitions:[{
+      status:{ type:{ state:'post', completed:true, shortDetail:'Final' } },
+      competitors:[
+        { team:{ id:'26', abbreviation:'SF', displayName:'Giants' }, homeAway:'home', score, winner:true },
+        { team:{ id:'11', abbreviation:'ATH', displayName:'Athletics' }, homeAway:'away', score:'3' },
+      ],
+    }],
+  });
+  await page.route(/\/mlb\/scoreboard$|\/mlb\/teams\/sf\/schedule\?seasontype=2$/, route => outage
+    ? route.fulfill({ status:503 })
+    : route.fulfill({ json:{ events:[result('5')] } }));
+  await page.route(/\/mlb\/teams\/ath\/schedule\?seasontype=2$/, route =>
+    route.fulfill({ json:{ events:[result(outage ? '6' : '5')] } }));
+  await page.goto('/?view=bayarea#/');
+  const scores = page.locator('.card .sc');
+  await expect(scores).toHaveText(['3', '5']);
+
+  outage = true;
+  await page.getByRole('button', { name:'Refresh now' }).click();
+  await expect(page.locator('#updated')).toHaveText('ESPN updates delayed');
+  await expect(scores).toHaveText(['3', '6']);
+  for (const key of ['giants', 'athletics']) {
+    await page.locator(`[data-filter="${key}"]`).click();
+    await expect(scores).toHaveText(['3', '6']);
+  }
+});
