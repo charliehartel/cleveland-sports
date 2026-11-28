@@ -597,8 +597,8 @@ async function loadTeam(t, refreshSchedules){
     }
     return null;
   });
-  // Games from a saved response carry its age, so a live card can say its score is old.
-  const normAt = (e, i) => { const g = norm(e, t); if (staleAt[i] != null) g.staleAt = staleAt[i]; return g; };
+  // Keep the fetch time for score precedence and show the age of failed-source snapshots.
+  const normAt = (e, i) => ({ ...norm(e, t), fetchedAt:previous[i]?.at, staleAt:staleAt[i] });
   const events = new Map();
   [regular, playoffs].forEach((data, i) => { for (const e of data?.events || []) events.set(String(e.id), normAt(e, i)); });
   for (const e of board?.events || []) {
@@ -606,8 +606,9 @@ async function loadTeam(t, refreshSchedules){
       String(x.team?.id) === t.id || (x.team?.abbreviation || '').toLowerCase() === t.abbr);
     if (mine) {
       const id = String(e.id), event = normAt(e, 2), scheduleEvent = events.get(id);
-      // An old scoreboard must not roll a newer schedule result back to live or pregame.
-      if (res[2].status === 'fulfilled' || !scheduleEvent || !scheduleEvent.completed || event.completed) events.set(id, event);
+      // During a scoreboard outage, keep the newer final if both sources have one.
+      const newerFinal = event.completed && event.fetchedAt > scheduleEvent?.fetchedAt;
+      if (res[2].status === 'fulfilled' || !scheduleEvent?.completed || newerFinal) events.set(id, event);
     }
   }
   if (!regular && !playoffs && !events.size) throw new Error(`Couldn't load the ${t.label} schedule`);
@@ -616,7 +617,7 @@ async function loadTeam(t, refreshSchedules){
 
 let homeState = { games:[], errors:[], staleAt:null, partial:false };
 const FILTER_KEY = VIEW_KEY === 'cleveland' ? 'teamFilter' : `teamFilter:${VIEW_KEY}`; // each view remembers its own team filter
-async function showHome(refreshSchedules = false){
+async function showHome(refreshSchedules = true){
   const active = beginPageLoad();
   document.title = `${APP_NAME} · ${VIEW.name}`;
   if (!$('#app .quick')) {
@@ -635,7 +636,7 @@ async function showHome(refreshSchedules = false){
   else setUpdated();
   const now = Date.now();
   const busy = games.some(g => g.state === 'in' || (g.state === 'pre' && g.date - now < 30*60e3 && g.date - now > -3*H));
-  schedule(showHome, busy ? 30e3 : SCHEDULE_MS);
+  schedule(() => showHome(false), busy ? 30e3 : SCHEDULE_MS);
 
   const nearby = games.filter(g => g.date.getTime() < now + 8*24*H && g.date.getTime() > now - 2*24*H && g.bay?.regional);
   if (nearby.length && await refineBay(nearby) && active()) renderHome();
@@ -2555,7 +2556,7 @@ async function showTeam(league, id, tab){
   const active = beginPageLoad();
   const fresh = tview.league !== league || tview.id !== id;
   const team = tview = { ...tview, tab:tab || 'schedule' };
-  if (team.l10?.loading) team.l10 = null;
+  if (team.l10?.loading || !team.stats) team.l10 = null;
   if (fresh) Object.assign(team, { league, id, schedCurrent:null, statCurrent:null, season:null, info:null, sched:null, stats:null, players:null, statSeason:null, stype:2, nba:null, l10:null, cat:null, sort:null, allCols:false, note:'',
     stand:null, standSeason:null, standCurrent:null, standNote:'', nhlL:null, showAll:null });
   if (!tview.info) $('#app').innerHTML = `<a class="back" href="#/">← All games</a><div class="loading">Loading team…</div>`;
@@ -3387,14 +3388,14 @@ function route(){
   window.scrollTo(0, 0);
   if (r.name === 'game') showGame(r.league, r.id);
   else if (r.name === 'team') { view = {}; showTeam(r.league, r.id, r.tab); }
-  else { view = {}; showHome(); }
+  else { view = {}; showHome(false); }
 }
 window.addEventListener('hashchange', route);
 $('#refresh').onclick = () => {
   const r = currentRoute(); clearTimeout(timer);
   if (r.name === 'game') showGame(r.league, r.id);
-  else if (r.name === 'team') { tview.sched = null; tview.stats = null; tview.stand = null; tview.l10 = null; newsState.fetchedAt = 0; showTeam(r.league, r.id, r.tab); }
-  else { newsState.fetchedAt = 0; showHome(true); }
+  else if (r.name === 'team') { tview.sched = null; tview.stats = null; tview.stand = null; newsState.fetchedAt = 0; showTeam(r.league, r.id, r.tab); }
+  else { newsState.fetchedAt = 0; showHome(); }
 };
 document.addEventListener('visibilitychange', () => { if (!document.hidden) $('#refresh').click(); });
 route();

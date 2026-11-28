@@ -403,3 +403,32 @@ test('NBA daily scoreboards are reused across adjacent Eastern dates', async ({ 
   expect(days).toHaveLength(8);
   expect(days[7]).toBe('20261102');
 });
+
+test('a corrected final from a refreshed schedule wins over an older cached scoreboard', async ({ page }) => {
+  let scheduleScore = '100', scoreboardDown = false;
+  const result = score => ({
+    id:EVENT,
+    date:new Date().toISOString(),
+    competitions:[{
+      status:{ type:{ state:'post', completed:true, shortDetail:'Final' } },
+      competitors:[
+        { team:TEAM_A, homeAway:'home', score, winner:true },
+        { team:TEAM_B, homeAway:'away', score:'97' },
+      ],
+    }],
+  });
+  await page.route(/\/nba\/teams\/cle\/schedule\?seasontype=2$/, route =>
+    route.fulfill({ json:{ events:[result(scheduleScore)] } }));
+  await page.route(/\/nba\/scoreboard$/, route => scoreboardDown
+    ? route.fulfill({ status:503 })
+    : route.fulfill({ json:{ events:[result('100')] } }));
+  await page.goto('/#/');
+  const scores = page.locator('.card .sc');
+  await expect(scores).toHaveText(['97', '100']);
+
+  scheduleScore = '101';
+  scoreboardDown = true;
+  await page.getByRole('button', { name:'Refresh now' }).click();
+  await expect(page.locator('#updated')).toHaveText('ESPN updates delayed');
+  await expect(scores).toHaveText(['97', '101']);
+});
