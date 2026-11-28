@@ -72,6 +72,23 @@ test('news in each view covers only that view\'s teams', async ({ page }) => {
   await expect(page.locator('.latest .ltitle')).toHaveText(['Browns story']);
 });
 
+test('a saved Athletics filter shows Bay Area news under All teams', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('teamFilter:bayarea', JSON.stringify('athletics')));
+  await page.route(/site\.api\.espn\.com/, r => r.fulfill({ json: { events: [] } }));
+  const published = new Date().toISOString();
+  const item = (team, title) => ({
+    team, title, published, source: 'espn', sourceName: 'ESPN', url: `https://example.org/${team}`,
+  });
+  await page.route(/raw\.githubusercontent\.com\/.*news\.json/, r => r.fulfill({ json: {
+    updated: published, sources: [],
+    items: [item('giants', 'Giants story'), item('sharks', 'Sharks story'), item('athletics', 'Athletics story')],
+  } }));
+  await page.goto('/?view=bayarea#/');
+  await expect(page.locator('[data-filter="all"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#home-news .latest .ltitle')).toHaveText(['Giants story', 'Sharks story'], { timeout: 3000 });
+  await expect(page.getByText('Athletics story')).toHaveCount(0);
+});
+
 test('box score lists my team first, even when it is the home team', async ({ page }) => {
   await page.goto('/?view=bayarea#/t/nhl/18');
   await ready(page, '.srow');

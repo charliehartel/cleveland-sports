@@ -732,9 +732,12 @@ function section(title, list, emptyMsg){
 const logoSrc = (t, dark) => t.league === 'college-football'
   ? `https://a.espncdn.com/i/teamlogos/ncaa/${dark ? '500-dark' : '500'}/${t.id}.png`
   : `https://a.espncdn.com/i/teamlogos/${t.league}/${dark ? '500-dark' : '500'}/${t.abbr}.png`;
-function renderHome(){
+function homeTeamFilter(){
   const saved = store.get(FILTER_KEY, 'all');
-  const filter = TEAMS.some(t => t.key === saved) ? saved : 'all';
+  return TEAMS.some(t => t.key === saved) ? saved : 'all';
+}
+function renderHome(){
+  const filter = homeTeamFilter();
   const b = buckets(homeState.games, filter);
   const chips = [{key:'all', label:'All teams'}, ...TEAMS].map(t =>
     `<button class="chip" data-filter="${t.key}" aria-pressed="${filter===t.key}">${t.color ? `<span class="sw" style="background:${t.color}"></span>` : ''}${esc(t.label)}</button>`).join('');
@@ -754,7 +757,16 @@ function renderHome(){
       : section('Today', b.today, 'No games today.') + section('Last 36 hours', b.recent, 'No games finished in the last 36 hours.')}
     ${section('Next 7 days', b.upcoming, 'Nothing scheduled in the next 7 days.')}
     ${VIEW.news ? `<div id="home-news">${newsBlock({ team:filter === 'all' ? null : filter, limit:homeNewsLimit, home:true })}</div>` : ''}`;
-  if (VIEW.news && (!newsState.data || Date.now() - newsState.fetchedAt >= 5*60e3)) loadNews().then(() => { if (currentRoute().name === 'home') { const el = $('#home-news'); if (el) { const f = store.get(FILTER_KEY, 'all'); el.innerHTML = newsBlock({ team:f === 'all' ? null : f, limit:homeNewsLimit, home:true }); wireNews(); } } });
+  if (VIEW.news && (!newsState.data || Date.now() - newsState.fetchedAt >= 5*60e3)) {
+    loadNews().then(() => {
+      if (currentRoute().name !== 'home') return;
+      const el = $('#home-news');
+      if (!el) return;
+      const filter = homeTeamFilter();
+      el.innerHTML = newsBlock({ team:filter === 'all' ? null : filter, limit:homeNewsLimit, home:true });
+      wireNews();
+    });
+  }
   wireNews();
   $('#app').querySelectorAll('[data-filter]').forEach(el => el.onclick = () => { store.set(FILTER_KEY, el.dataset.filter); renderHome(); });
 }
