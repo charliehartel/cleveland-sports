@@ -151,12 +151,13 @@ td.pl{max-width:170px;overflow:hidden;text-overflow:ellipsis}
 .plays li.scoring .txt{font-weight:600}
 .plays li.scoring .scr{color:var(--text);font-weight:700}
 .gstr{display:inline-block;margin-right:6px;padding:0 6px;border-radius:4px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;background:var(--surface-2);color:var(--text)}
+.star3{display:inline-block;flex:none;width:3.6em;margin:0!important;font-size:14px!important;letter-spacing:-.05em;white-space:nowrap}
 .star{margin-left:6px;font-size:11px;font-weight:800;color:#c48a00;white-space:nowrap}
 @media (prefers-color-scheme:dark){.star{color:#f5c542}}
 .penl{display:inline-block;margin-right:6px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;color:var(--warn)}
 .ppbar{display:inline-block;margin-top:6px;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:700;background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}
 /* Hockey: my team's goals get a red goal light; the other team's goals are muted */
-.plays li.goal-mine{background:color-mix(in srgb,#e00000 9%,transparent);box-shadow:inset 4px 0 0 #e00000;padding-left:8px}
+.plays li.goal-mine{background:color-mix(in srgb,#e00000 9%,transparent);box-shadow:inset 4px 0 0 #e00000;margin-left:-10px;padding-left:10px}
 .plays li.goal-mine .txt,.plays li.goal-mine .scr{font-weight:800}
 .plays li.goal-opp{opacity:.55}
 .plays li.goal-opp .txt,.plays li.goal-opp .scr{font-weight:400}
@@ -1851,8 +1852,8 @@ function nhlThreeStars(g){
   if (!stars.length) return '';
   const goalie = n => fa.find(f => f.name === n)?.athlete;
   const w = goalie('winningGoalie'), l = goalie('losingGoalie');
-  return `<div class="box"><h3>Three stars</h3><ul class="pvl">${stars.map(({ label, f }) => `<li><div class="top"><span class="star" style="margin:0;font-size:14px">${'★'.repeat(label === '1st' ? 1 : label === '2nd' ? 2 : 3)}</span>
-      <span class="small">${esc(label)} star</span>${img(teamLogoById(g, f.team?.id || f.athlete?.team?.id), 'logo', '')}<span class="nm">${esc(f.athlete.displayName)}</span></div>
+  return `<div class="box"><h3>Three stars</h3><ul class="pvl">${stars.map(({ label, f }) => `<li><div class="top"><span class="star star3">${'★'.repeat(label === '1st' ? 1 : label === '2nd' ? 2 : 3)}</span>
+      <span class="small" style="display:inline-block;flex:none;width:4.2em">${esc(label)} star</span>${img(teamLogoById(g, f.team?.id || f.athlete?.team?.id), 'logo', '')}<span class="nm">${esc(f.athlete.displayName)}</span></div>
       <div class="meta">${esc(nhlBoxLine(g, f.athlete.id))}</div></li>`).join('')}</ul>
     ${w || l ? `<div class="note">${w ? `Win: ${esc(w.displayName)}` : ''}${w && l ? ' · ' : ''}${l ? `Loss: ${esc(l.displayName)}` : ''}</div>` : ''}</div>`;
 }
