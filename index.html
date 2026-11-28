@@ -1771,8 +1771,8 @@ async function pxLoad(g){
 }
 // Players worth checking for streaks: basketball's top 8 scorers; football's QB, top 2 rushers, top 4 receivers and top 2 pass rushers
 function pxCandidates(g, tid){
-  const P = view.px?.players[tid] || {};
-  const top = (cat, k, n, role) => [...(P[cat] || [])].sort((a, b) => pxN(b, k) - pxN(a, k)).slice(0, n).filter(p => pxN(p, k) > 0).map((p, i) => ({ p, role, rank:i + 1 }));
+  const P = view.px?.players[tid] || {}, out = pxOutIds(gameCtx(), tid);
+  const top = (cat, k, n, role) => [...(P[cat] || [])].sort((a, b) => pxN(b, k) - pxN(a, k)).filter(p => pxN(p, k) > 0 && !out.has(String(p.id))).slice(0, n).map((p, i) => ({ p, role, rank:i + 1 }));
   if (pxBall(g)) return top('game', 'avgPoints', 8, 'ball');
   return [...top('passing', 'passingYards', 1, 'qb'), ...top('rushing', 'rushingYards', 2, 'rb'), ...top('receiving', 'receivingYards', 4, 'wr'), ...top('defensive', 'sacks', 2, 'def')];
 }
@@ -1797,6 +1797,7 @@ function pxPlayer(g, tid, aid){
     const rows = [...(P[cat] || [])].sort((a, b) => pxN(b, k) - pxN(a, k));
     const i = rows.findIndex(p => String(p.id) === String(aid));
     if (i < 0 || !pxN(rows[i], k)) continue;
+    if (cat === 'defensive' && pxN(rows[i], 'totalTackles') < 5 && !pxN(rows[i], 'sacks')) continue; // incidental
     if (!best || i < best.rank - 1) best = { p:rows[i], cat, rank:i + 1, label };
   }
   if (!best) return null;
@@ -1804,7 +1805,7 @@ function pxPlayer(g, tid, aid){
   const line = { passing:`${v('completions')}/${v('passingAttempts')}, ${v('passingYards')} yds, ${v('passingTouchdowns')} TD, ${v('interceptions')} INT`,
     rushing:`${v('rushingAttempts')} car, ${v('rushingYards')} yds, ${v('rushingTouchdowns')} TD`,
     receiving:`${v('receptions')} rec, ${v('receivingYards')} yds, ${v('receivingTouchdowns')} TD`,
-    defensive:`${v('totalTackles')} tackles, ${v('sacks')} sacks, ${v('interceptions')} INT`,
+    defensive:`${v('totalTackles')} tackles, ${v('sacks')} sack${v('sacks') === '1' ? '' : 's'}, ${v('interceptions')} INT`,
     kicking:`${v('fieldGoalsMade')}/${v('fieldGoalAttempts')} FG, ${v('totalKickingPoints')} pts` }[best.cat];
   return { p, rank:best.rank, line:`${line} · ${ordinal(best.rank)} on team in ${best.label}` };
 }
@@ -1889,7 +1890,11 @@ function pxStreaks(g){
   const body = t => {
     if (!x?.done) return `<div class="empty">Checking recent games…</div>`;
     const out = pxOutIds(g, t.id), rows = [];
-    for (const c of pxCandidates(g, t.id)) for (const s2 of pxStreaksFor(g, c)) rows.push({ name:c.p.name, pos:c.p.pos, id:String(c.p.id), ...s2 });
+    const seenRow = new Set();
+    for (const c of pxCandidates(g, t.id)) for (const s2 of pxStreaksFor(g, c)) {
+      const key = c.p.id + '|' + s2.text;
+      if (!seenRow.has(key)) { seenRow.add(key); rows.push({ name:c.p.name, pos:c.p.pos, id:String(c.p.id), ...s2 }); }
+    }
     if (!rows.length) return `<div class="empty">No notable streaks.</div>`;
     rows.sort((a, b) => b.hot - a.hot);
     return `<ul class="pvl">${rows.map(r => `<li><div class="top"><span class="tagx ${r.hot ? 'hot' : 'cold'}">${r.hot ? 'Hot' : 'Cold'}</span><span class="nm">${esc(r.name)}</span><span class="small">${esc(r.pos || '')}</span>${out.has(r.id) ? '<span class="tagx out">Out</span>' : ''}</div><div class="meta">${esc(r.text)}</div></li>`).join('')}</ul>`;
@@ -1925,15 +1930,15 @@ function pxMilestones(g){
         let games;
         if (!rateKey) {
           games = need;
-          if (need === 1) { out.push({ t, p, games:0, now:true, text:`Would play his ${ordinal(next)} career game tonight` }); continue; }
+          if (need === 1) { out.push({ t, p, games:0, now:true, text:`This would be his ${ordinal(next)} career game` }); continue; }
         } else {
           const r = rowsFor(rateKey)[0];
           if (!r) continue;
           const rate = pxBall(g) ? pxN(r, rateKey) : pxN(r, rateKey) / Math.max(1, pxN(r, 'gamesPlayed'));
-          if (!rate) continue;
+          if (!(rate > 0)) continue; // e.g. a quarterback's negative rushing yards from kneel-downs
           games = Math.ceil(need / rate);
         }
-        if (games > 5) continue;
+        if (games > 5 || games < 0) continue;
         const fmtN = n => n.toLocaleString();
         const one = { threes:'three', 'TD passes':'TD pass', 'rushing TDs':'rushing TD', 'receiving TDs':'receiving TD' }[label] || label.replace(/s$/, '');
         out.push({ t, p, games, text:rateKey ? `${fmtN(need)} ${need === 1 ? one : label} from ${fmtN(next)} career ${label} · about ${games} game${games === 1 ? '' : 's'} at this season's pace` : `${need} games from ${fmtN(next)} career games` });
@@ -1943,7 +1948,7 @@ function pxMilestones(g){
   if (!out.length) return x.careerDone ? `<div class="box"><h3>Milestones</h3><div class="empty">No career milestones within 5 games.</div></div>` : `<div class="box"><h3>Milestones</h3><div class="empty">Checking career totals…</div></div>`;
   out.sort((a, b) => isMine(g.league, b.t.id) - isMine(g.league, a.t.id) || (b.now ? 1 : 0) - (a.now ? 1 : 0) || a.games - b.games);
   return `<div class="box"><h3>Milestones <span class="sub">within about 5 games</span></h3><ul class="pvl">${out.map(m =>
-    `<li><div class="top">${img(logoOf(m.t.team), 'logo', '')}<span class="nm">${esc(m.p.name)}</span><span class="small">${esc(m.p.pos || '')}</span>${m.now ? '<span class="tagx hot">Tonight</span>' : ''}</div><div class="meta">${esc(m.text)}</div></li>`).join('')}</ul></div>`;
+    `<li><div class="top">${img(logoOf(m.t.team), 'logo', '')}<span class="nm">${esc(m.p.name)}</span><span class="small">${esc(m.p.pos || '')}</span>${m.now ? '<span class="tagx hot">This game</span>' : ''}</div><div class="meta">${esc(m.text)}</div></li>`).join('')}</ul></div>`;
 }
 function pxPreview(g){
   return [previewInfo(g), pxOut(g), pxLeaders(g), pxStreaks(g), pxMilestones(g), nhlSeries(g),
