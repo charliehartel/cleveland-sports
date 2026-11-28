@@ -141,3 +141,14 @@ base('MLB.com drops league-wide pieces but keeps team stories; team-site picks c
   plainExpect(relevant(it("The A's need rotation help. Could one of these 5 arms deliver?", 'https://www.mlb.com/athletics/news/z'), 'athletics', 'team-feed')).toBe(true);
   plainExpect(relevant(it('Expert Game Picks: Raiders or Browns?', 'https://www.raiders.com/news/x'), 'raiders', 'official')).toBe(false);
 });
+
+base('collector tells the SF Giants from the NY Giants', async () => {
+  const { relevant } = await import('../scripts/news.mjs');
+  const it = (title, summary = '') => ({ title, url: 'https://www.nbcsportsbayarea.com/news/x', summary });
+  // a general Bay Area feed: the story has to name the team
+  plainExpect(relevant(it('Giants sign veteran reliever to one-year deal'), 'giants')).toBe(true);
+  plainExpect(relevant(it('49ers hold off Giants in New Jersey'), 'giants')).toBe(false);
+  plainExpect(relevant(it('New York Giants fire offensive coordinator'), 'giants')).toBe(false);
+  plainExpect(relevant(it('New York Giants fire offensive coordinator'), 'nygiants')).toBe(true);
+  plainExpect(relevant(it('SF Giants hire new hitting coach'), 'nygiants')).toBe(false);
+});

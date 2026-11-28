@@ -128,6 +128,100 @@ test('NHL three stars render from ESPN featured athletes', async ({ page }) => {
   expect(r.map).toEqual([1, 2, 3]);
 });
 
+test('football scoring tags and hockey goal tags', async ({ page }) => {
+  const r = await page.evaluate(() => {
+    const tag = (league, p) => { const el = document.createElement('div'); el.innerHTML = fbScoreTag({ league }, p) + nhlGoalTag({ league }, p); return el.textContent; };
+    return {
+      td: tag('nfl', { scoringType: { name: 'touchdown' } }), fg: tag('college-football', { scoringType: { name: 'field-goal' } }), safety: tag('nfl', { scoringType: { name: 'safety' } }),
+      nbaNone: tag('nba', { scoringType: { name: 'touchdown' } }),
+      pp: tag('nhl', { scoringPlay: true, strength: { abbreviation: 'power-play' } }), sh: tag('nhl', { scoringPlay: true, strength: { abbreviation: 'short-handed' } }),
+      en: tag('nhl', { scoringPlay: true, strength: { abbreviation: 'empty-net' } }), even: tag('nhl', { scoringPlay: true, strength: { abbreviation: 'even-strength' } }),
+    };
+  });
+  expect(r).toEqual({ td: 'TD', fg: 'FG', safety: 'Safety', nbaNone: '', pp: 'Power-play goal', sh: 'Shorthanded goal', en: 'Empty-net goal', even: '' });
+});
+
+test('preview streaks: games he sat out are skipped and a miss ends the streak', async ({ page }) => {
+  const r = await page.evaluate(() => {
+    const log = st => ({ st, date: new Date() });
+    view.px = { logs: {
+      b1: [log({ minutes: '34', points: '25' }), log({ minutes: '0', points: '0' }), log({ minutes: '30', points: '22' }), log({ minutes: '31', points: '21' }), log({ minutes: '29', points: '10' }), log({ minutes: '33', points: '30' })],
+      q1: [log({ passingYards: '320', passingTouchdowns: '1', interceptions: '1' }), log({ passingYards: '305', passingTouchdowns: '0', interceptions: '1' }), log({ passingYards: '250', passingTouchdowns: '3', interceptions: '1' }), log({ passingYards: '400', interceptions: '0' })],
+    } };
+    const p = (id, vals) => ({ id, vals: Object.fromEntries(Object.entries(vals).map(([k, v]) => [k, { value: v }])) });
+    const out = {
+      ball: pxStreaksFor({ league: 'nba' }, { p: p('b1', { avgPoints: 22 }), role: 'ball', rank: 1 }),
+      qb: pxStreaksFor({ league: 'nfl' }, { p: p('q1', {}), role: 'qb', rank: 1 }),
+    };
+    view.px = null;
+    return out;
+  });
+  expect(r.ball.map(x => x.text)).toEqual(['20+ points in 3 straight games']);
+  expect(r.qb).toEqual([{ hot: true, text: '300+ passing yards in 2 straight games' }, { hot: false, text: 'an interception in 3 straight games' }]);
+});
+
+test('preview milestones: skips out players and negative paces, counts this game, singular units', async ({ page }) => {
+  const texts = await page.evaluate(() => {
+    const p = (id, name, vals) => ({ id, name, pos: 'QB', vals: Object.fromEntries(Object.entries(vals).map(([k, v]) => [k, { value: v }])) });
+    view.px = { playersDone: true, careerDone: true, logs: {},
+      players: {
+        '25': { passing: [p('q1', 'Starter', { passingYards: 3000, passingTouchdowns: 20, gamesPlayed: 10 }), p('q2', 'Hurt QB', { passingYards: 3500, passingTouchdowns: 25, gamesPlayed: 10 })],
+                rushing: [p('q1', 'Starter', { rushingYards: -20, gamesPlayed: 10 })] },
+        '13': {} },
+      career: { q1: { passingYards: 19800, passingTouchdowns: 99, rushingYards: 990, gamesPlayed: 49 }, q2: { passingYards: 29900, gamesPlayed: 99 } } };
+    const g = { league: 'nfl', s: { injuries: [{ team: { id: '25' }, injuries: [{ status: 'Out', athlete: { id: 'q2' } }] }] },
+      away: { team: { id: '25', abbreviation: 'SF' } }, home: { team: { id: '13', abbreviation: 'LV' } } };
+    const el = document.createElement('div'); el.innerHTML = pxMilestones(g);
+    view.px = null;
+    return [...el.querySelectorAll('.meta')].map(e => e.textContent);
+  });
+  expect(texts).toEqual([
+    'This would be his 50th career game',
+    "200 passing yards from 20,000 career passing yards · about 1 game at this season's pace",
+    "1 TD pass from 100 career TD passes · about 1 game at this season's pace",
+  ]);
+});
+
+test('a game between two of my teams shows once and under both team filters', async ({ page }) => {
+  const r = await page.evaluate(() => {
+    const ev = id => ({ id, date: new Date(Date.now() + 2 * 864e5).toISOString(), competitions: [{ status: { type: { state: 'pre' } }, competitors: [
+      { homeAway: 'home', team: { id: '13', abbreviation: 'LV', displayName: 'Las Vegas Raiders' } }, { homeAway: 'away', team: { id: '25', abbreviation: 'SF', displayName: 'San Francisco 49ers' } }] }] });
+    const a = { key: 'niners', league: 'nfl' }, b = { key: 'raiders', league: 'nfl' };
+    const games = mergeGames([[norm(ev('1'), a), norm(ev('2'), a)], [norm(ev('1'), b)]]);
+    return { n: games.length, keys: games.find(g => g.id === '1').keys, niners: buckets(games, 'niners').upcoming.length, raiders: buckets(games, 'raiders').upcoming.map(g => g.id) };
+  });
+  expect(r).toEqual({ n: 2, keys: ['niners', 'raiders'], niners: 2, raiders: ['1'] });
+});
+
+test('requests time out instead of hanging, and one league scoreboard request is shared', async ({ page }) => {
+  let scoreboards = 0;
+  await page.route(/never-answers/, () => {}); // left pending on purpose
+  await page.route(/football\/nfl\/scoreboard$/, async r => { scoreboards++; await new Promise(res => setTimeout(res, 300));
+    await r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '{"events":[{"id":"x"}]}' }); });
+  const r = await page.evaluate(async () => {
+    const timedOut = await getJSON('https://site.api.espn.com/never-answers', { timeout: 500 }).then(() => 'answered', e => e.message);
+    const t = { league: 'nfl', sport: 'football' };
+    const [a, b] = await Promise.all([leagueScoreboard(t), leagueScoreboard(t)]);
+    const mapped = await Promise.all(['https://site.api.espn.com/football/nfl/scoreboard'].map(getJSON)); // .map passes an index, which must not become a time limit
+    await leagueScoreboard(t); // after the first settles, a fresh request
+    return { timedOut, same: a === b, ids: a.events.map(e => e.id), mapped: mapped[0].events.length };
+  });
+  expect(r).toEqual({ timedOut: 'timed out', same: true, ids: ['x'], mapped: 1 });
+  expect(scoreboards).toBe(3);
+});
+
+test('ESPN text is escaped before it reaches the page', async ({ page }) => {
+  const r = await page.evaluate(() => {
+    const evil = '<img src=x onerror="window.pwned=1">';
+    const ev = { id: '1"><b>', date: new Date().toISOString(), competitions: [{ status: { type: { state: 'pre', shortDetail: evil } }, venue: { fullName: evil }, competitors: [
+      { homeAway: 'home', team: { id: '1', abbreviation: evil, displayName: evil, logo: 'javascript:alert(1)' } }, { homeAway: 'away', team: { id: '2', abbreviation: 'B', displayName: evil } }] }] };
+    const el = document.createElement('div');
+    el.innerHTML = card(norm(ev, { key: 'browns', league: 'nfl', color: 'red' }));
+    return { injected: el.querySelectorAll('img[onerror], b').length, badSrc: [...el.querySelectorAll('img')].some(i => !i.getAttribute('src').startsWith('https://')), text: el.textContent.includes('<img') };
+  });
+  expect(r).toEqual({ injected: 0, badSrc: false, text: true });
+});
+
 // Guard check: an ESPN endpoint that doesn't allow web pages (the team-info endpoint that once
 // broke team pages) must be reported in these tests, the same way a phone's browser blocks it.
 const { test: plain, expect: plainExpect } = require('@playwright/test');

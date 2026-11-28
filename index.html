@@ -384,10 +384,19 @@ const store = {
   get(k, d){ try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
   set(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
 };
-async function getJSON(url){
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  return r.json();
+const FETCH_MS = 15000; // a request that hangs would otherwise stop the live refresh loop, which only reschedules once a request settles
+// Options object, not a plain number: getJSON is also used as a .map() callback, which passes the index as the second argument.
+async function getJSON(url, { timeout = FETCH_MS } = {}){
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), timeout);
+  try {
+    const r = await fetch(url, { signal:ctl.signal });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return await r.json();
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error('timed out');
+    throw e;
+  } finally { clearTimeout(t); }
 }
 const fmtTime = d => d.toLocaleTimeString([], { hour:'numeric', minute:'2-digit' });
 const fmtDay = d => d.toLocaleDateString([], { weekday:'short', month:'short', day:'numeric' });
@@ -524,10 +533,22 @@ function bayPill(bay){
 /* ---------- Home ---------- */
 const scoreboardCache = {};
 const sbQuery = league => league === 'college-football' ? '?groups=80' : ''; // FBS, not just the top 25
-async function leagueScoreboard(t){
-  const d = await getJSON(`${API}/${t.sport}/${t.league}/scoreboard${sbQuery(t.league)}`);
-  scoreboardCache[t.league] = d;
-  return d;
+const scoreboardPending = {};
+// Two of my teams in one league (49ers and Raiders) share one request instead of downloading the same scoreboard twice.
+function leagueScoreboard(t){
+  return scoreboardPending[t.league] ||= getJSON(`${API}/${t.sport}/${t.league}/scoreboard${sbQuery(t.league)}`)
+    .then(d => { scoreboardCache[t.league] = d; return d; })
+    .finally(() => { delete scoreboardPending[t.league]; });
+}
+// Each team loads its own schedule, so a game between two of my teams arrives twice: keep one card, filed under both teams.
+function mergeGames(lists){
+  const byId = new Map();
+  for (const g of lists.flat()) {
+    const had = byId.get(g.id);
+    if (had) { if (!had.keys.includes(g.team.key)) had.keys.push(g.team.key); }
+    else byId.set(g.id, { ...g, keys:[g.team.key] });
+  }
+  return [...byId.values()];
 }
 async function loadTeam(t){
   const base = `${API}/${t.sport}/${t.league}`;
@@ -554,7 +575,7 @@ async function showHome(){
   if (!homeState.games.length) $('#app').innerHTML = '<div class="loading">Loading your teams…</div>';
   const res = await Promise.allSettled(TEAMS.map(loadTeam));
   if (currentRoute().name !== 'home') return;
-  homeState = { games:res.flatMap(r => r.status==='fulfilled' ? r.value : []), errors:res.flatMap(r => r.status==='rejected' ? [r.reason.message] : []) };
+  homeState = { games:mergeGames(res.map(r => r.status==='fulfilled' ? r.value : [])), errors:res.flatMap(r => r.status==='rejected' ? [r.reason.message] : []) };
   const soon = Date.now() + 8*24*H;
   await refineBay(homeState.games.filter(g => g.date.getTime() < soon && g.date.getTime() > Date.now() - 2*24*H));
   if (currentRoute().name !== 'home') return;
@@ -566,7 +587,7 @@ async function showHome(){
 }
 function buckets(games, filter){
   const now = new Date(), t = now.getTime();
-  const gs = games.filter(g => filter === 'all' || g.team.key === filter);
+  const gs = games.filter(g => filter === 'all' || (g.keys || [g.team.key]).includes(filter));
   const live = gs.filter(g => g.state === 'in').sort((a,b) => a.date-b.date);
   const today = gs.filter(g => g.state !== 'in' && sameDay(g.date, now)).sort((a,b) => a.date-b.date);
   const recent = gs.filter(g => g.state === 'post' && !sameDay(g.date, now) && g.date.getTime() + 3*H >= t - 36*H && g.date.getTime() <= t)
@@ -595,15 +616,16 @@ function section(title, list, emptyMsg){
   return `<h2 class="sec">${esc(title)} <span class="count">${list.length || ''}</span></h2>` +
     (list.length ? `<div class="grid">${list.map(card).join('')}</div>` : `<div class="empty">${esc(emptyMsg)}</div>`);
 }
+// ESPN logo for one of my teams; college logos are filed by team id, pro logos by abbreviation
+const logoSrc = (t, dark) => t.league === 'college-football'
+  ? `https://a.espncdn.com/i/teamlogos/ncaa/${dark ? '500-dark' : '500'}/${t.id}.png`
+  : `https://a.espncdn.com/i/teamlogos/${t.league}/${dark ? '500-dark' : '500'}/${t.abbr}.png`;
 function renderHome(){
   const saved = store.get(FILTER_KEY, 'all');
   const filter = TEAMS.some(t => t.key === saved) ? saved : 'all';
   const b = buckets(homeState.games, filter);
   const chips = [{key:'all', label:'All teams'}, ...TEAMS].map(t =>
     `<button class="chip" data-filter="${t.key}" aria-pressed="${filter===t.key}">${t.color ? `<span class="sw" style="background:${t.color}"></span>` : ''}${esc(t.label)}</button>`).join('');
-  const logoSrc = (t, dark) => t.league === 'college-football' // college logos are filed by team id
-    ? `https://a.espncdn.com/i/teamlogos/ncaa/${dark ? '500-dark' : '500'}/${t.id}.png`
-    : `https://a.espncdn.com/i/teamlogos/${t.league}/${dark ? '500-dark' : '500'}/${t.abbr}.png`;
   const quick = `<nav class="quick" aria-label="Team pages">${TEAMS.map(t => `<a class="qteam" style="--tc:${t.color}" href="#/t/${t.league}/${t.id}">
       <picture><source media="(prefers-color-scheme: dark)" srcset="${logoSrc(t, true)}"><img src="${logoSrc(t, false)}" alt="" width="44" height="44"></picture>
       <span class="qname">${esc(t.label)}</span><span class="qlg">${esc(leagueLabel(t.league))}</span></a>`).join('')}</nav>`;
@@ -689,8 +711,9 @@ async function showGame(league, id){
     view.espnAt = s.meta?.lastUpdatedAt ? new Date(s.meta.lastUpdatedAt) : null;
     if (!view.tab) view.tab = state === 'in' ? 'gamecast' : state === 'post' ? 'box' : 'preview';
     if (changed || !$('#app .score-hero')) renderGame();
-    if (league === 'nhl') loadNhlExtra(gameCtx(), state); // scratches, player stats, ranks, streaks (fills in as it arrives)
-    else if (state === 'pre' && (fam(league) === 'nba' || fam(league) === 'nfl')) pxLoad(gameCtx()); // same idea for basketball and football previews
+    const extraFail = e => console.warn(`Extra game data didn't load: ${e.message}`); // the page works without it
+    if (league === 'nhl') loadNhlExtra(gameCtx(), state).catch(extraFail); // scratches, player stats, ranks, streaks (fills in as it arrives)
+    else if (state === 'pre' && (fam(league) === 'nba' || fam(league) === 'nfl')) pxLoad(gameCtx()).catch(extraFail); // same idea for basketball and football previews
     view.fresh = new Set(); // highlight new plays once, not again on tab switches
     tickLive();
     setUpdated(state === 'in' ? ' · live' : '');
@@ -1771,7 +1794,7 @@ async function pxLoad(g){
 }
 // Players worth checking for streaks: basketball's top 8 scorers; football's QB, top 2 rushers, top 4 receivers and top 2 pass rushers
 function pxCandidates(g, tid){
-  const P = view.px?.players[tid] || {}, out = pxOutIds(gameCtx(), tid);
+  const P = view.px?.players[tid] || {}, out = pxOutIds(g, tid);
   const top = (cat, k, n, role) => [...(P[cat] || [])].sort((a, b) => pxN(b, k) - pxN(a, k)).filter(p => pxN(p, k) > 0 && !out.has(String(p.id))).slice(0, n).map((p, i) => ({ p, role, rank:i + 1 }));
   if (pxBall(g)) return top('game', 'avgPoints', 8, 'ball');
   return [...top('passing', 'passingYards', 1, 'qb'), ...top('rushing', 'rushingYards', 2, 'rb'), ...top('receiving', 'receivingYards', 4, 'wr'), ...top('defensive', 'sacks', 2, 'def')];
@@ -3188,7 +3211,7 @@ function newsBlock({ team, limit, home }){
     const tops = TEAMS.map(t => ({ t, i:items.filter(x => x.team === t.key).sort((a, b) => b.published.localeCompare(a.published))[0] })).filter(x => x.i);
     if (tops.length) {
       latest = `<div class="box latest"><h3>Latest from each team</h3>${tops.map(({ t, i }) => `<a class="lrow" style="--tc:${t.color}" href="${esc(safeUrl(i.url))}" target="_blank" rel="noopener">
-          <img class="llogo" src="https://a.espncdn.com/i/teamlogos/${t.league}/500/${t.abbr}.png" alt="">
+          <img class="llogo" src="${logoSrc(t, false)}" alt="">
           <div class="lbody"><div class="nmeta"><span class="nteam">${esc(t.label)}</span><span class="nsrc">${esc(i.sourceName)}</span><span>${esc(timeAgo(i.published))}</span>${i.paywall ? '<span class="npay">Subscriber</span>' : ''}</div>
           <div class="ltitle">${esc(i.title)}</div></div></a>`).join('')}</div>`;
       const used = new Set(tops.map(x => x.i.url));
