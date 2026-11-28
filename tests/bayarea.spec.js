@@ -1,7 +1,7 @@
 // Views: Cleveland (default) and Bay Area (?view=bayarea), chosen from the header title.
 const { test, expect, ready } = require('./helpers');
 
-const BAY = ['Warriors', '49ers', 'Giants', 'Sharks', 'Athletics', 'Raiders'];
+const BAY = ['Warriors', '49ers', 'Giants', 'Sharks', 'Athletics', 'Raiders', 'Valkyries', 'Stanford'];
 
 test('Bay Area view shows its six teams and its own title', async ({ page }) => {
   await page.goto('/?view=bayarea#/');
@@ -100,4 +100,30 @@ test('NYC Cool and NYC Lame groups', async ({ page }) => {
   await ready(page, '.qteam');
   await expect(page.locator('.qteam .qname')).toHaveText(['Yankees', 'Jets', 'Knicks']);
   await expect(page.locator('#view')).toHaveValue('nyclame');
+});
+
+test('Valkyries (WNBA) and Stanford (college football) team pages', async ({ page }) => {
+  for (const [path, name] of [['/?view=bayarea#/t/wnba/129689', 'Golden State Valkyries'], ['/?view=bayarea#/t/college-football/24', 'Stanford Cardinal']]) {
+    await page.goto(path);
+    await ready(page, '.team-hero');
+    await expect(page.locator('.team-hero')).toContainText(name);
+    if (!(await page.locator('.srow .wl').count())) await page.selectOption('[data-season]', { index: 1 });
+    await expect(page.locator('.srow .wl').first()).toBeVisible();
+    // standings: conference tables (no divisions in either league), own row highlighted
+    await page.locator('.tab', { hasText: 'Standings' }).click();
+    await ready(page, 'table.stand');
+    await expect(page.locator('table.stand tr.me')).toHaveCount(1);
+    await expect(page.locator('[data-sview="division"]')).toHaveText('Conference');
+    // a finished game opens with a box score
+    await page.locator('.tab', { hasText: 'Schedule' }).click();
+    await ready(page, '.srow');
+    await page.locator('.srow', { has: page.locator('.wl') }).first().click();
+    await ready(page, '.score-hero');
+    expect(await page.locator('.panel tbody tr').count()).toBeGreaterThan(10);
+  }
+  // league labels on the home screen links
+  await page.goto('/?view=bayarea#/');
+  await ready(page, '.qteam');
+  await expect(page.locator('.qteam', { hasText: 'Stanford' }).locator('.qlg')).toHaveText('NCAAF');
+  await expect(page.locator('.qteam', { hasText: 'Valkyries' }).locator('.qlg')).toHaveText('WNBA');
 });
