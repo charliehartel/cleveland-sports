@@ -251,15 +251,17 @@ test('upcoming cards show record, division rank and streak from the standings', 
     out.pre = [...el.querySelectorAll('.trow .nm')].map(n => n.textContent);
     el.innerHTML = card({ ...g('post'), home: { ...side('9', 'GS'), score: '100', record: '11-9' }, away: { ...side('13', 'LAL'), score: '98', record: '14-6' } });
     out.post = [...el.querySelectorAll('.trow .nm')].map(n => n.textContent);
+    out.streaks = ['W1', 'L4', 'OT1', 'OTL2', 'W0', ''].map(streakText);
     cardStandings.clear();
     return out;
   });
-  expect(r.nhl).toEqual({ '37': { record: '15-6-4', rank: '1st in Pacific', streak: '' }, '18': { record: '12-10-3', rank: '2nd in Pacific', streak: 'Won 3 straight' } });
+  expect(r.nhl).toEqual({ '37': { record: '15-6-4', rank: '1st in Pacific', streak: 'Lost last game' }, '18': { record: '12-10-3', rank: '2nd in Pacific', streak: 'Won 3 straight' } });
   expect(r.nba['9']).toEqual({ record: '10-9', rank: '2nd in Pacific', streak: 'Lost 2 straight' });
-  expect(r.nba['13'].streak).toBe(''); // only win and loss streaks
+  expect(r.nba['13'].streak).toBe('Tied 2 straight');
+  expect(r.streaks).toEqual(['Won last game', 'Lost 4 straight', 'Lost last game in OT', 'Lost 2 straight in OT', '', '']);
   expect(r.mlb).toEqual({});
   expect(r.cfb['24']).toEqual({ record: '7-5', rank: '2nd in Atlantic Coast', streak: 'Won 4 straight' });
-  expect(r.pre).toEqual(['LAL14-51st in Pacific', 'GS10-92nd in Pacific · Lost 2 straight']);
+  expect(r.pre).toEqual(['LAL14-51st in Pacific · Tied 2 straight', 'GS10-92nd in Pacific · Lost 2 straight']);
   expect(r.post).toEqual(['LAL14-6', 'GS11-9']); // results keep ESPN's post-game record and no extras
 });
 

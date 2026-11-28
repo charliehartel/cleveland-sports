@@ -666,9 +666,13 @@ const STANDINGS_MS = 30*60e3;
 const cardStandings = new Map(); // league -> cache entry whose value is Map(teamId -> { record, rank, streak })
 const groupLabel = n => String(n || '').replace(/^American League\b/, 'AL').replace(/^National League\b/, 'NL')
   .replace(/\s+(Division|Conference)$/i, '');
+// ESPN streaks: W3, L1, T2 (NFL ties), OT2 / OTL2 (NHL overtime losses)
 function streakText(v){
-  const m = String(v || '').match(/^([WL])(\d+)$/); // ties and overtime-loss streaks are left out
-  return m && +m[2] >= 2 ? `${m[1] === 'W' ? 'Won' : 'Lost'} ${m[2]} straight` : ''; // a 1-game streak isn't news
+  const m = String(v || '').toUpperCase().match(/^(W|L|T|OTL|OT)(\d+)$/);
+  if (!m || +m[2] < 1) return '';
+  const n = +m[2], ot = m[1].startsWith('OT');
+  const verb = { W:'Won', L:'Lost', T:'Tied' }[m[1]] || 'Lost';
+  return (n === 1 ? `${verb} last game` : `${verb} ${n} straight`) + (ot ? ' in OT' : '');
 }
 function standingsByTeam(league, d){
   const out = new Map(), leaves = [];
