@@ -656,7 +656,7 @@ setInterval(tickLive, 1000);
 async function showGame(league, id){
   const sameGame = view.league === league && view.id === id;
   if (!sameGame) Object.assign(view, { league, id, tab:null, s:null, sit:null, open:new Set(), period:'all', shotTeam:'all',
-    sig:null, seen:null, fresh:new Set(), fetchedAt:null, espnAt:null, failures:0, nx:null });
+    sig:null, seen:null, fresh:new Set(), fetchedAt:null, espnAt:null, failures:0, nx:null, px:null });
   if (document.hidden && view.s) { schedule(() => showGame(league, id), LIVE_MS); return; } // paused while the app is in the background
   if (!view.s) $('#app').innerHTML = `<a class="back" href="#/">← All games</a><div class="loading">Loading game…</div>`;
   const sport = SPORT[league];
@@ -690,6 +690,7 @@ async function showGame(league, id){
     if (!view.tab) view.tab = state === 'in' ? 'gamecast' : state === 'post' ? 'box' : 'preview';
     if (changed || !$('#app .score-hero')) renderGame();
     if (league === 'nhl') loadNhlExtra(gameCtx(), state); // scratches, player stats, ranks, streaks (fills in as it arrives)
+    else if (state === 'pre' && (fam(league) === 'nba' || fam(league) === 'nfl')) pxLoad(gameCtx()); // same idea for basketball and football previews
     view.fresh = new Set(); // highlight new plays once, not again on tab switches
     tickLive();
     setUpdated(state === 'in' ? ' · live' : '');
@@ -1378,6 +1379,7 @@ function nhlShots(g){
 /* ---------- Preview (upcoming) ---------- */
 function renderPreview(g){
   if (g.league === 'nhl') return nhlPreview(g);
+  if (fam(g.league) === 'nba' || fam(g.league) === 'nfl') return pxPreview(g);
   const s = g.s, out = [];
   const date = new Date(g.comp.date);
   const odds = s.pickcenter?.[0];
@@ -1678,9 +1680,18 @@ function nhlSeries(g){
     const score = done ? `${a?.team?.abbreviation} ${a?.score} – ${h?.team?.abbreviation} ${h?.score}${extra}` : `${a?.team?.abbreviation} @ ${h?.team?.abbreviation}`;
     const when = done ? fmtDay(d) : `${fmtDay(d)}, ${fmtTime(d)}`;
     const inner = `<div class="top"><span class="nm">${esc(score)}</span>${here ? '<span class="tagx hot">This game</span>' : done ? '' : '<span class="tagx">Upcoming</span>'}</div><div class="meta">${esc(when)}</div>`;
-    return `<li>${here || !done ? inner : `<a href="#/g/nhl/${esc(e.id)}">${inner}</a>`}</li>`;
+    return `<li>${here || !done ? inner : `<a href="#/g/${esc(g.league)}/${esc(e.id)}">${inner}</a>`}</li>`;
   }).join('');
   return `<div class="box"><h3>Season series <span class="sub">${esc(ser.summary || '')}${ser.totalCompetitions ? ` · ${ser.totalCompetitions} meetings` : ''}</span></h3><ul class="pvl">${rows}</ul></div>`;
+}
+function previewInfo(g){
+  const s = g.s, date = new Date(g.comp.date), odds = s.pickcenter?.[0];
+  return `<div class="box"><h3>Game info</h3><dl class="kv">
+    <dt>Start</dt><dd>${esc(fmtDay(date))}, ${esc(fmtTime(date))}</dd>
+    ${s.gameInfo?.venue?.fullName ? `<dt>Venue</dt><dd>${esc(s.gameInfo.venue.fullName)}${s.gameInfo.venue.address?.city ? ', ' + esc(s.gameInfo.venue.address.city) : ''}</dd>` : ''}
+    ${bcOf(g.comp) ? `<dt>TV</dt><dd>${esc(bcOf(g.comp))}</dd>` : ''}
+    ${odds?.details ? `<dt>Line</dt><dd>${esc(odds.details)}${odds.overUnder ? ` · O/U ${esc(odds.overUnder)}` : ''}</dd>` : ''}
+  </dl></div>`;
 }
 function nhlPreview(g){
   const s = g.s, date = new Date(g.comp.date), odds = s.pickcenter?.[0];
@@ -1696,6 +1707,247 @@ function nhlPreview(g){
 function nhlScratchNote(g){
   const parts = nhlSides(g).map(t => { const sc = nhlScratches(t.id); return sc.length ? `<b>${esc(t.abbr)}</b> ${esc(sc.map(e => e.displayName).join(', '))}` : ''; }).filter(Boolean);
   return parts.length ? `<div class="note">Scratches: ${parts.join(' · ')}</div>` : '';
+}
+
+/* ---------- Rich previews: basketball (NBA, WNBA) and football (NFL, college) ----------
+   The hockey preview's ideas for other sports: injured players with their season numbers and team rank, season
+   leaders with league ranks, streaks from game logs, career milestones within reach, and the season series.
+   Data: each team's player stats (site API), league ranks and career totals (ESPN core API), game logs (site.web). */
+const pxCore = g => `https://sports.core.api.espn.com/v2/sports/${SPORT[g.league]}/leagues/${g.league}`;
+const pxWeb = g => `https://site.web.api.espn.com/apis/common/v3/sports/${SPORT[g.league]}/${g.league}`;
+const pxBall = g => fam(g.league) === 'nba';
+const PX_LEAGUE = { nba:'NBA', wnba:'WNBA', nfl:'NFL', 'college-football':'FBS' };
+const pxSides = g => [g.away, g.home].filter(Boolean).map(c => ({ id:String(c.team?.id), abbr:c.team?.abbreviation, name:c.team?.displayName, team:c.team }))
+  .sort((a, b) => isMine(g.league, b.id) - isMine(g.league, a.id));
+const pxCols = (g, fn) => `<div class="two">${pxSides(g).map(t => `<div><div class="teamhead" style="font-size:14px">${img(logoOf(t.team), 'logo')}${esc(t.name)}</div>${fn(t)}</div>`).join('')}</div>`;
+const pxN = (p, k) => Number(p?.vals[k]?.value ?? String(p?.vals[k]?.displayValue ?? '').replace(/,/g, '')) || 0;
+const pxD = (p, k) => p?.vals[k]?.displayValue ?? '';
+// Football: each player's main category and its headline stat
+const PX_FB = [['passing', 'passingYards', 'passing yards'], ['rushing', 'rushingYards', 'rushing yards'], ['receiving', 'receivingYards', 'receiving yards'],
+               ['defensive', 'totalTackles', 'tackles'], ['kicking', 'totalKickingPoints', 'kicking points']];
+// Leader categories in the game summary → the stat name ESPN ranks
+const PX_RANK_STAT = { pointsPerGame:'avgPoints', assistsPerGame:'avgAssists', reboundsPerGame:'avgRebounds' };
+
+async function pxLoad(g){
+  const id = view.id, season = g.s.header?.season?.year, stype = g.s.header?.season?.type || 2;
+  const x = view.px ||= { players:{}, ranks:{}, logs:{}, career:{}, started:false, playersDone:false, done:false, careerDone:false };
+  if (x.started) return;
+  x.started = true;
+  const alive = () => view.id === id;
+  const redraw = () => { if (alive() && view.tab === 'preview') renderGame(); };
+  const sides = pxSides(g);
+  await Promise.all(sides.map(async t => {
+    try {
+      const d = await getJSON(`${API}/${SPORT[g.league]}/${g.league}/teams/${t.id}/athletes/statistics?seasontype=${stype}${season ? `&season=${season}` : ''}`);
+      x.players[t.id] = Object.fromEntries((d.results || []).map(c => [c.name, playerRows(c)]));
+    } catch { x.players[t.id] = {}; }
+  }));
+  x.playersDone = true;
+  if (!alive()) return;
+  redraw();
+  const leaderIds = [...new Set((g.s.leaders || []).flatMap(t => (t.leaders || []).map(c => c.leaders?.[0]?.athlete?.id)).filter(Boolean))];
+  const cands = [...new Set(sides.flatMap(t => pxCandidates(g, t.id).map(c => String(c.p.id))))];
+  await Promise.all([
+    nhlPool(leaderIds, 6, async aid => {
+      const d = await getJSON(`${pxCore(g)}/seasons/${season}/types/${stype}/athletes/${aid}/statistics`);
+      const r = {};
+      for (const c of d.splits?.categories || []) for (const st of c.stats || []) if (st.rankDisplayValue && !(st.name in r)) r[st.name] = st.rankDisplayValue;
+      x.ranks[aid] = r;
+    }),
+    nhlPool(cands, 8, async aid => { x.logs[aid] = nhlGameLog(await getJSON(`${pxWeb(g)}/athletes/${aid}/gamelog`), new Date(g.comp.date)); }),
+  ]);
+  x.done = true;
+  redraw();
+  if (g.league === 'college-football') return; // college careers aren't milestone material
+  const ids = [...new Set(sides.flatMap(t => pxMilestonePlayers(g, t.id).map(p => String(p.id))))];
+  await nhlPool(ids, 8, async aid => {
+    const d = await getJSON(`${pxCore(g)}/athletes/${aid}/statistics/0`);
+    const c = {};
+    for (const cat of d.splits?.categories || []) for (const st of cat.stats || []) if (!(st.name in c)) c[st.name] = st.value;
+    x.career[aid] = c;
+  });
+  x.careerDone = true;
+  redraw();
+}
+// Players worth checking for streaks: basketball's top 8 scorers; football's QB, top 2 rushers, top 4 receivers and top 2 pass rushers
+function pxCandidates(g, tid){
+  const P = view.px?.players[tid] || {};
+  const top = (cat, k, n, role) => [...(P[cat] || [])].sort((a, b) => pxN(b, k) - pxN(a, k)).slice(0, n).filter(p => pxN(p, k) > 0).map((p, i) => ({ p, role, rank:i + 1 }));
+  if (pxBall(g)) return top('game', 'avgPoints', 8, 'ball');
+  return [...top('passing', 'passingYards', 1, 'qb'), ...top('rushing', 'rushingYards', 2, 'rb'), ...top('receiving', 'receivingYards', 4, 'wr'), ...top('defensive', 'sacks', 2, 'def')];
+}
+function pxMilestonePlayers(g, tid){
+  const P = view.px?.players[tid] || {};
+  if (pxBall(g)) return (P.game || []).filter(p => pxN(p, 'gamesPlayed') > 0);
+  const by = (cat, k, n) => [...(P[cat] || [])].sort((a, b) => pxN(b, k) - pxN(a, k)).slice(0, n);
+  return [...by('passing', 'passingYards', 2), ...by('rushing', 'rushingYards', 3), ...by('receiving', 'receivingYards', 5), ...by('defensive', 'sacks', 4)];
+}
+// A player's season line and where he ranks on his team
+function pxPlayer(g, tid, aid){
+  const P = view.px?.players[tid] || {};
+  if (pxBall(g)) {
+    const rows = [...(P.game || [])].sort((a, b) => pxN(b, 'avgPoints') - pxN(a, 'avgPoints'));
+    const i = rows.findIndex(p => String(p.id) === String(aid));
+    if (i < 0) return null;
+    const p = rows[i];
+    return { p, rank:i + 1, line:`${pxD(p, 'gamesPlayed')} GP · ${pxD(p, 'avgPoints')} PTS, ${pxD(p, 'avgRebounds')} REB, ${pxD(p, 'avgAssists')} AST · ${ordinal(i + 1)} on team in scoring` };
+  }
+  let best = null;
+  for (const [cat, k, label] of PX_FB) {
+    const rows = [...(P[cat] || [])].sort((a, b) => pxN(b, k) - pxN(a, k));
+    const i = rows.findIndex(p => String(p.id) === String(aid));
+    if (i < 0 || !pxN(rows[i], k)) continue;
+    if (!best || i < best.rank - 1) best = { p:rows[i], cat, rank:i + 1, label };
+  }
+  if (!best) return null;
+  const p = best.p, v = k => pxD(p, k) || '0';
+  const line = { passing:`${v('completions')}/${v('passingAttempts')}, ${v('passingYards')} yds, ${v('passingTouchdowns')} TD, ${v('interceptions')} INT`,
+    rushing:`${v('rushingAttempts')} car, ${v('rushingYards')} yds, ${v('rushingTouchdowns')} TD`,
+    receiving:`${v('receptions')} rec, ${v('receivingYards')} yds, ${v('receivingTouchdowns')} TD`,
+    defensive:`${v('totalTackles')} tackles, ${v('sacks')} sacks, ${v('interceptions')} INT`,
+    kicking:`${v('fieldGoalsMade')}/${v('fieldGoalAttempts')} FG, ${v('totalKickingPoints')} pts` }[best.cat];
+  return { p, rank:best.rank, line:`${line} · ${ordinal(best.rank)} on team in ${best.label}` };
+}
+function pxOut(g){
+  const inj = g.s.injuries || [];
+  if (!inj.some(t => (t.injuries || []).length)) return '';
+  const body = t => {
+    const list = ((inj.find(x => String(x.team?.id) === t.id)?.injuries) || []).map(i => {
+      const f = pxPlayer(g, t.id, i.athlete?.id);
+      return { i, f, w:f ? (pxBall(g) ? pxN(f.p, 'avgPoints') : 100 - f.rank) : -1 };
+    }).sort((a, b) => b.w - a.w);
+    if (!list.length) return `<div class="empty">Nobody listed.</div>`;
+    return `<ul class="pvl">${list.map(({ i, f }) => {
+      const back = i.details?.returnDate ? new Date(i.details.returnDate + 'T12:00:00') : null;
+      const meta = [[i.details?.type, i.details?.detail].filter(Boolean).join(', '), back && !isNaN(back) ? `expected back ${shortDate(back)}` : ''].filter(Boolean).join(' · ');
+      return `<li><div class="top"><span class="nm">${esc(i.athlete?.displayName)}</span><span class="small">${esc(i.athlete?.position?.abbreviation || '')}</span><span class="tagx ${/questionable|day-to-day|probable/i.test(i.status || '') ? '' : 'out'}">${esc(i.status || 'Injured')}</span></div>
+        ${meta ? `<div class="meta">${esc(meta)}</div>` : ''}<div class="meta">${esc(f ? f.line : view.px?.playersDone ? 'No stats this season' : 'Loading stats…')}</div></li>`;
+    }).join('')}</ul>`;
+  };
+  return `<div class="box"><h3>Injury report <span class="sub">with season stats</span></h3>${pxCols(g, body)}</div>`;
+}
+const pxOutIds = (g, tid) => new Set(((g.s.injuries || []).find(x => String(x.team?.id) === tid)?.injuries || []).filter(i => /out|reserve|doubtful/i.test(i.status || '')).map(i => String(i.athlete?.id)));
+function pxLeaders(g){
+  const L = g.s.leaders || [];
+  if (!L.length) return '';
+  const x = view.px, lg = PX_LEAGUE[g.league] || leagueLabel(g.league);
+  const body = t => {
+    const tl = L.find(z => String(z.team?.id) === t.id), out = pxOutIds(g, t.id);
+    return `<ul class="pvl">${(tl?.leaders || []).map(c => {
+      const top = c.leaders?.[0]; if (!top) return '';
+      const aid = String(top.athlete?.id), rk = x?.ranks[aid]?.[PX_RANK_STAT[c.name] || c.name];
+      return `<li><div class="top"><span class="small">${esc(c.displayName)}</span></div>
+        <div class="top"><span class="nm">${esc(top.athlete?.displayName)}</span>${out.has(aid) ? '<span class="tagx out">Out</span>' : ''}<span style="margin-left:auto" class="num"><b>${esc(top.displayValue)}</b></span><span class="lrk">${esc(rk ? `${rk.replace(/^Tied-/, 'T-')} in ${lg}` : x?.done ? '' : '…')}</span></div></li>`;
+    }).join('')}</ul>`;
+  };
+  return `<div class="box"><h3>Season leaders <span class="sub">with league rank</span></h3>${pxCols(g, body)}</div>`;
+}
+// Streaks from game logs (games played, newest first)
+function pxStreaksFor(g, c){
+  let evs = view.px?.logs[String(c.p.id)] || [];
+  const N = (e, k) => { const v = e.st[k]; if (v == null) return 0; const n = parseFloat(String(v).split('-')[0]); return isNaN(n) ? 0 : n; };
+  if (pxBall(g)) evs = evs.filter(e => N(e, 'minutes') > 0); // skip games he didn't play
+  if (!evs.length) return [];
+  const run = f => { let n = 0; for (const e of evs) { if (f(e)) n++; else break; } return n; };
+  const avg = (n, f) => evs.slice(0, n).reduce((s2, e) => s2 + f(e), 0) / Math.min(n, evs.length);
+  const out = [], push = (hot, text) => out.push({ hot, text });
+  if (c.role === 'ball') {
+    const pts = e => N(e, 'points');
+    const dd = e => ['points', 'totalRebounds', 'assists', 'steals', 'blocks'].filter(k => N(e, k) >= 10).length >= 2;
+    const r20 = run(e => pts(e) >= 20), rdd = run(dd), r3 = run(e => N(e, 'threePointFieldGoalsMade-threePointFieldGoalsAttempted') >= 3);
+    if (r20 >= 3) push(true, `20+ points in ${r20} straight games`);
+    if (rdd >= 3) push(true, `double-doubles in ${rdd} straight games`);
+    if (r3 >= 4) push(true, `3+ threes in ${r3} straight games`);
+    const season = pxN(c.p, 'avgPoints'), l5 = avg(5, pts);
+    if (evs.length >= 5 && season >= 8 && l5 - season >= 5 && r20 < 3) push(true, `averaging ${l5.toFixed(1)} points over his last 5 (${season.toFixed(1)} this season)`);
+    if (evs.length >= 5 && c.rank <= 5 && season - l5 >= 5) push(false, `averaging ${l5.toFixed(1)} points over his last 5 (${season.toFixed(1)} this season)`);
+    return out;
+  }
+  const tds = e => N(e, 'rushingTouchdowns') + N(e, 'receivingTouchdowns');
+  if (c.role === 'qb') {
+    const r300 = run(e => N(e, 'passingYards') >= 300), r2 = run(e => N(e, 'passingTouchdowns') >= 2), clean = run(e => !N(e, 'interceptions')), picks = run(e => N(e, 'interceptions') >= 1);
+    if (r300 >= 2) push(true, `300+ passing yards in ${r300} straight games`);
+    if (r2 >= 3) push(true, `2+ TD passes in ${r2} straight games`);
+    if (clean >= 4) push(true, `no interceptions in ${clean} straight games`);
+    if (picks >= 3) push(false, `an interception in ${picks} straight games`);
+  } else if (c.role === 'rb' || c.role === 'wr') {
+    const k = c.role === 'rb' ? 'rushingYards' : 'receivingYards', what = c.role === 'rb' ? 'rushing' : 'receiving';
+    const r100 = run(e => N(e, k) >= 100), rtd = run(e => tds(e) > 0);
+    if (r100 >= 2) push(true, `100+ ${what} yards in ${r100} straight games`);
+    if (rtd >= 3) push(true, `a touchdown in ${rtd} straight games`);
+    const gp = pxN(c.p, 'gamesPlayed'), season = gp ? pxN(c.p, k) / gp : 0, l3 = avg(3, e => N(e, k));
+    if (c.rank === 1 && evs.length >= 3 && season >= 50 && l3 <= season * .5) push(false, `${Math.round(l3)} ${what} yards a game over his last 3 (${Math.round(season)} this season)`);
+  } else if (c.role === 'def') {
+    const rs = run(e => N(e, 'sacks') > 0);
+    if (rs >= 3) push(true, `a sack in ${rs} straight games`);
+  }
+  return out;
+}
+function pxStreaks(g){
+  const x = view.px;
+  const latest = Object.values(x?.logs || {}).map(l => l[0]?.date).filter(Boolean).sort((a, b) => b - a)[0];
+  const body = t => {
+    if (!x?.done) return `<div class="empty">Checking recent games…</div>`;
+    const out = pxOutIds(g, t.id), rows = [];
+    for (const c of pxCandidates(g, t.id)) for (const s2 of pxStreaksFor(g, c)) rows.push({ name:c.p.name, pos:c.p.pos, id:String(c.p.id), ...s2 });
+    if (!rows.length) return `<div class="empty">No notable streaks.</div>`;
+    rows.sort((a, b) => b.hot - a.hot);
+    return `<ul class="pvl">${rows.map(r => `<li><div class="top"><span class="tagx ${r.hot ? 'hot' : 'cold'}">${r.hot ? 'Hot' : 'Cold'}</span><span class="nm">${esc(r.name)}</span><span class="small">${esc(r.pos || '')}</span>${out.has(r.id) ? '<span class="tagx out">Out</span>' : ''}</div><div class="meta">${esc(r.text)}</div></li>`).join('')}</ul>`;
+  };
+  return `<div class="box"><h3>Streaks <span class="sub">${pxBall(g) ? 'top scorers' : 'quarterback, top rushers, receivers and pass rushers'}, games played${latest ? `, through ${shortDate(latest)}` : ''}</span></h3>${pxCols(g, body)}</div>`;
+}
+// Career milestones within about 5 games at this season's pace
+const PX_MS = {
+  ball:[['points', 'points', 1000, 'avgPoints'], ['rebounds', 'rebounds', 500, 'avgRebounds'], ['assists', 'assists', 500, 'avgAssists'],
+        ['threePointFieldGoalsMade', 'threes', 100, 'avgThreePointFieldGoalsMade'], ['gamesPlayed', 'games', 100, null]],
+  fb:[['passingYards', 'passing yards', 5000, 'passingYards'], ['passingTouchdowns', 'TD passes', 25, 'passingTouchdowns'], ['rushingYards', 'rushing yards', 1000, 'rushingYards'],
+      ['rushingTouchdowns', 'rushing TDs', 25, 'rushingTouchdowns'], ['receptions', 'receptions', 100, 'receptions'], ['receivingYards', 'receiving yards', 1000, 'receivingYards'],
+      ['receivingTouchdowns', 'receiving TDs', 25, 'receivingTouchdowns'], ['sacks', 'sacks', 10, 'sacks'], ['gamesPlayed', 'games', 50, null]],
+};
+function pxMilestones(g){
+  if (g.league === 'college-football') return '';
+  const x = view.px, out = [];
+  if (!x?.playersDone) return '';
+  for (const t of pxSides(g)) {
+    const injured = pxOutIds(g, t.id), seen = new Set();
+    for (const p of pxMilestonePlayers(g, t.id)) {
+      if (seen.has(String(p.id))) continue;
+      seen.add(String(p.id));
+      const car = x.career[String(p.id)];
+      if (!car) continue;
+      const P = view.px.players[t.id] || {};
+      // season pace: basketball rows carry per-game averages; football totals are divided by games played
+      const rowsFor = k => pxBall(g) ? [p] : Object.values(P).flat().filter(r => String(r.id) === String(p.id) && r.vals[k]);
+      for (const [k, label, step, rateKey] of PX_MS[pxBall(g) ? 'ball' : 'fb']) {
+        const have = Number(car[k] ?? (k === 'rebounds' ? car.totalRebounds : undefined));
+        if (!isFinite(have) || have <= 0) continue;
+        const next = (Math.floor(have / step) + 1) * step, need = next - have;
+        let games;
+        if (!rateKey) {
+          if (injured.has(String(p.id))) continue;
+          games = need;
+          if (need === 1) { out.push({ t, p, games:0, now:true, text:`Would play his ${ordinal(next)} career game tonight` }); continue; }
+        } else {
+          const r = rowsFor(rateKey)[0];
+          if (!r) continue;
+          const rate = pxBall(g) ? pxN(r, rateKey) : pxN(r, rateKey) / Math.max(1, pxN(r, 'gamesPlayed'));
+          if (!rate) continue;
+          games = Math.ceil(need / rate);
+        }
+        if (games > 5) continue;
+        const fmtN = n => n.toLocaleString();
+        out.push({ t, p, games, text:rateKey ? `${fmtN(need)} ${label} from ${fmtN(next)} career ${label} · about ${games} game${games === 1 ? '' : 's'} at this season's pace` : `${need} games from ${fmtN(next)} career games` });
+      }
+    }
+  }
+  if (!out.length) return x.careerDone ? `<div class="box"><h3>Milestones</h3><div class="empty">No career milestones within 5 games.</div></div>` : `<div class="box"><h3>Milestones</h3><div class="empty">Checking career totals…</div></div>`;
+  out.sort((a, b) => isMine(g.league, b.t.id) - isMine(g.league, a.t.id) || (b.now ? 1 : 0) - (a.now ? 1 : 0) || a.games - b.games);
+  return `<div class="box"><h3>Milestones <span class="sub">within about 5 games</span></h3><ul class="pvl">${out.map(m =>
+    `<li><div class="top">${img(logoOf(m.t.team), 'logo', '')}<span class="nm">${esc(m.p.name)}</span><span class="small">${esc(m.p.pos || '')}</span>${m.now ? '<span class="tagx hot">Tonight</span>' : ''}</div><div class="meta">${esc(m.text)}</div></li>`).join('')}</ul></div>`;
+}
+function pxPreview(g){
+  return [previewInfo(g), pxOut(g), pxLeaders(g), pxStreaks(g), pxMilestones(g), nhlSeries(g),
+    `<div class="note">Box score, gamecast and play-by-play appear here once the game starts. This page checks for the start every minute in the last hour before the game.</div>`].join('');
 }
 
 /* ---------- NHL in-game ---------- */
