@@ -105,8 +105,8 @@ export const RSS_SOURCES = [
     id: 'news5', name: 'News 5 Cleveland', domains: ['news5cleveland.com'],
     feeds: {
       browns:    ['https://www.news5cleveland.com/sports/browns.rss', { url: 'https://www.news5cleveland.com/sports.rss', filter: true }],
-      cavs:      ['https://www.news5cleveland.com/sports/cavs.rss', { url: 'https://www.news5cleveland.com/sports.rss', filter: true }],
-      guardians: ['https://www.news5cleveland.com/sports/guardians.rss', { url: 'https://www.news5cleveland.com/sports.rss', filter: true }],
+      cavs:      ['https://www.news5cleveland.com/sports/basketball/cavaliers.rss', { url: 'https://www.news5cleveland.com/sports.rss', filter: true }],
+      guardians: ['https://www.news5cleveland.com/sports/cleveland-guardians.rss', { url: 'https://www.news5cleveland.com/sports.rss', filter: true }],
     },
   },
   // ---- Bay Area outlets ----
