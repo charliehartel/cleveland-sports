@@ -21,7 +21,6 @@ export const TEAMS = {
   giants:    { league: 'mlb', sport: 'baseball',   espnId: '26', words: ['giants'], not: ['ny giants', 'new york giants', 'big blue', '49ers', 'niners'], paths: ['giants', 'sf-giants', 'san-francisco-giants'] },
   sharks:    { league: 'nhl', sport: 'hockey',     espnId: '18', words: ['sharks'], paths: ['sharks', 'san-jose-sharks'] },
   athletics: { league: 'mlb', sport: 'baseball',   espnId: '11', words: ['athletics', "a's"], paths: ['athletics', 'oakland-athletics', 'as'] },
-  raiders:   { league: 'nfl', sport: 'football',   espnId: '13', words: ['raiders'], paths: ['raiders', 'las-vegas-raiders'] },
   valkyries: { league: 'wnba', sport: 'basketball', espnId: '129689', words: ['valkyries'], paths: ['valkyries', 'golden-state-valkyries'] },
   stanford:  { league: 'college-football', sport: 'football', espnId: '24', words: ['stanford'], paths: ['stanford', 'stanford-cardinal'] },
   // New York
@@ -56,7 +55,6 @@ export const RSS_SOURCES = [
       giants:    ['https://www.nytimes.com/athletic/rss/mlb/giants/', 'https://www.nytimes.com/athletic/rss/mlb/sf-giants/', 'https://www.nytimes.com/athletic/rss/mlb/san-francisco-giants/'],
       sharks:    ['https://www.nytimes.com/athletic/rss/nhl/sharks/'],
       athletics: ['https://www.nytimes.com/athletic/rss/mlb/athletics/'],
-      raiders:   ['https://www.nytimes.com/athletic/rss/nfl/raiders/'],
       mets:      ['https://www.nytimes.com/athletic/rss/mlb/mets/'],
       nygiants:  ['https://www.nytimes.com/athletic/rss/nfl/giants/', 'https://www.nytimes.com/athletic/rss/nfl/ny-giants/'],
       knicks:    ['https://www.nytimes.com/athletic/rss/nba/knicks/'],
@@ -66,13 +64,12 @@ export const RSS_SOURCES = [
   },
   {
     // Official team news: everything is about the team, so only promos are dropped.
-    id: 'team', name: 'Team site', domains: ['clevelandbrowns.com', '49ers.com', 'raiders.com', 'giants.com', 'newyorkjets.com'], scope: 'official',
-    names: { browns: 'ClevelandBrowns.com', niners: '49ers.com', raiders: 'Raiders.com', nygiants: 'Giants.com', jets: 'NewYorkJets.com' },
+    id: 'team', name: 'Team site', domains: ['clevelandbrowns.com', '49ers.com', 'giants.com', 'newyorkjets.com'], scope: 'official',
+    names: { browns: 'ClevelandBrowns.com', niners: '49ers.com', nygiants: 'Giants.com', jets: 'NewYorkJets.com' },
     // NBA.com (Cavs) refuses these requests (HTTP 403), so there's no Cavs team-site feed.
     feeds: {
       browns:    ['https://www.clevelandbrowns.com/rss/news', 'https://www.clevelandbrowns.com/news/rss'],
       niners:    ['https://www.49ers.com/rss/news'],
-      raiders:   ['https://www.raiders.com/rss/news'],
       nygiants:  ['https://www.giants.com/rss/news'],
       jets:      ['https://www.newyorkjets.com/rss/news'],
     },
@@ -123,10 +120,6 @@ export const RSS_SOURCES = [
       sharks:    ['https://www.nbcsportsbayarea.com/nhl/san-jose-sharks/feed/', { url: 'https://www.nbcsportsbayarea.com/feed/', filter: true }],
       athletics: ['https://www.nbcsportsbayarea.com/mlb/oakland-athletics/feed/', { url: 'https://www.nbcsportsbayarea.com/feed/', filter: true }],
     },
-  },
-  {
-    id: 'rj', name: 'Las Vegas Review-Journal', domains: ['reviewjournal.com'],
-    feeds: { raiders: ['https://www.reviewjournal.com/sports/raiders/feed/'] },
   },
   // ---- New York outlets ----
   // Tried and not usable: NY Daily News (refuses these requests, HTTP 403), SNY (no feeds) and the

@@ -1,6 +1,6 @@
 # My Sports
 
-A personal scores app for your teams, grouped by region: Cleveland (Cavaliers, Browns, Guardians), the Bay Area (Warriors, 49ers, Giants, Sharks, Athletics, Raiders), NYC Cool (Mets, Giants, Knicks) and NYC Lame (Yankees, Jets, Knicks).
+A personal scores app for your teams, grouped by region: Cleveland (Cavaliers, Browns, Guardians), the Bay Area (Warriors, 49ers, Giants, Sharks, Athletics, Valkyries, Stanford football), NYC Cool (Mets, Giants, Knicks) and NYC Lame (Yankees, Jets, Knicks).
 
 Open it at **https://charliehartel.github.io/my-sports/**.
 
