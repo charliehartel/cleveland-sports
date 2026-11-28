@@ -20,6 +20,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Load the previous news snapshot
+        run: |
+          mkdir -p out
+          if git ls-remote --exit-code origin refs/heads/news-data > /dev/null; then
+            git fetch --depth=1 origin refs/heads/news-data
+            git show FETCH_HEAD:news.json > out/news.json
+          else
+            status=$?
+            if [ "$status" -ne 2 ]; then exit "$status"; fi
+          fi
       - name: Collect news from the trusted sources
         run: node scripts/news.mjs out/news.json
       # The app reads news.json from the news-data branch. Each run replaces that branch with a

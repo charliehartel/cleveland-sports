@@ -4,7 +4,7 @@
 //
 // Usage: node scripts/news.mjs out/news.json
 
-import { writeFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
 const UA = 'Mozilla/5.0 (compatible; my-sports-news/1.0; +https://github.com/charliehartel/my-sports)';
@@ -209,66 +209,110 @@ export function espnKeep(a, team) {
 async function espn(teamKey) {
   const t = TEAMS[teamKey];
   const d = await get(`https://site.api.espn.com/apis/site/v2/sports/${t.sport}/${t.league}/news?team=${t.espnId}&limit=50`, 'json');
-  return (d.articles || []).filter(a => espnKeep(a, t)).map(a => ({
+  if (!Array.isArray(d?.articles)) throw new Error('Invalid ESPN news payload');
+  return d.articles.filter(a => espnKeep(a, t)).map(a => ({
     title: a.headline, url: httpsOnly(a.links?.web?.href), published: a.published, summary: (a.description || '').slice(0, 280),
     author: a.byline || '', image: httpsOnly(a.images?.[0]?.url),
   }));
 }
 
 /* ---------- RSS ---------- */
-async function rss(source, teamKey) {
+function parseFeedDocument(text) {
+  // An HTTP 200 can contain a site landing page or an outage notice.
+  const document = text.trim().replace(/^(?:(?:<\?[\s\S]*?\?>|<!--[\s\S]*?-->|<!DOCTYPE\s+[^>]*>)\s*)*/i, '');
+  const root = document.match(/^<(rss|feed|rdf:RDF)(?=[\s>])/i)?.[1];
+  if (!root || !new RegExp(`</${root}\\s*>\\s*(?:<!--[\\s\\S]*?-->\\s*)*$`, 'i').test(document)) {
+    throw new Error('Invalid RSS or Atom document');
+  }
+  if (root.toLowerCase() === 'rss' && !/<channel[\s>][\s\S]*<\/channel\s*>/i.test(document)) {
+    throw new Error('RSS document has no channel');
+  }
+  return parseFeed(document);
+}
+async function rss(source, teamKey, loadFeed) {
   const t = TEAMS[teamKey];
   const errors = [];
+  let reached = null; // a feed that loaded but had nothing about this team: quiet, not down
   for (const f of source.feeds[teamKey] || []) {
     const { url, filter } = typeof f === 'string' ? { url: f, filter: false } : f;
     try {
-      const items = parseFeed(await get(url))
+      const items = (await loadFeed(url))
         .filter(i => onDomain(i.url, source.domains))
         .filter(i => relevant(i, teamKey, filter ? 'general' : source.scope) && (!filter || names(`${i.title} ${i.summary}`, t)));
       if (items.length) return { url, items };
-      errors.push(`${url}: no matching items`);
+      reached ||= url;
     } catch (e) { errors.push(`${url}: ${e.message}`); }
   }
+  if (reached) return { url: reached, items: [] };
   throw new Error(errors.join(' | ') || 'no feeds configured');
 }
 
 /* ---------- main ---------- */
-export async function collect() {
+export async function collect(previous = []) {
   const now = Date.now();
   const sources = [], items = [];
+  const failed = new Map();
+  const sourceKey = (team, source) => `${team}|${source}`;
+  const recent = ts => Number.isFinite(ts) && now - ts <= DAYS * 864e5 && ts - now <= 864e5;
   const jobs = [];
+  const feeds = new Map();
+  const loadFeed = url => {
+    if (!feeds.has(url)) feeds.set(url, get(url).then(parseFeedDocument));
+    return feeds.get(url);
+  };
   for (const teamKey of Object.keys(TEAMS)) {
     jobs.push(espn(teamKey).then(list => ({ id: 'espn', name: 'ESPN', teamKey, url: 'site.api.espn.com', list }))
       .catch(e => ({ id: 'espn', name: 'ESPN', teamKey, error: e.message })));
     for (const s of RSS_SOURCES) {
       if (!s.feeds[teamKey]?.length) continue; // source doesn't cover this team
-      jobs.push(rss(s, teamKey).then(r => ({ id: s.id, name: s.names?.[teamKey] || s.name, teamKey, url: r.url, list: r.items, paywall: !!s.paywall }))
+      jobs.push(rss(s, teamKey, loadFeed).then(r => ({ id: s.id, name: s.names?.[teamKey] || s.name, teamKey, url: r.url, list: r.items, paywall: !!s.paywall }))
         .catch(e => ({ id: s.id, name: s.names?.[teamKey] || s.name, teamKey, error: e.message })));
     }
   }
   for (const r of await Promise.all(jobs)) {
-    sources.push({ id: r.id, name: r.name, team: r.teamKey, ok: !r.error, count: r.list?.length || 0, feed: r.url || null, error: r.error || null });
+    const source = { id: r.id, name: r.name, team: r.teamKey, ok: !!r.list, count: r.list?.length || 0, feed: r.url || null, error: r.error || null };
+    sources.push(source);
+    if (!source.ok) failed.set(sourceKey(source.team, source.id), source);
     for (const i of r.list || []) {
       const ts = Date.parse(i.published);
-      if (!isFinite(ts) || now - ts > DAYS * 864e5 || ts - now > 864e5) continue;
+      if (!recent(ts) || typeof i.title !== 'string' || !i.title.trim()) continue;
       items.push({ team: r.teamKey, source: r.id, sourceName: r.name, paywall: !!r.paywall,
         title: i.title, url: httpsOnly(i.url), published: new Date(ts).toISOString(), summary: i.summary, author: i.author, image: httpsOnly(i.image) });
     }
   }
-  // de-duplicate: same link, or the same headline from another outlet (syndicated copies)
+  const retained = [];
+  for (const i of previous) {
+    const source = i && failed.get(sourceKey(i.team, i.source));
+    const ts = Date.parse(i?.published);
+    if (!source || !recent(ts) || typeof i.title !== 'string' || !i.title.trim() || !httpsOnly(i.url)) continue;
+    retained.push({ ...i, sourceName:source.name, published:new Date(ts).toISOString(), stale:true });
+  }
+  // Prefer fresh coverage over retained duplicates. Within each group, keep the newest copy.
+  const newest = (a, b) => b.published.localeCompare(a.published);
   const seenUrl = new Set(), seenTitle = new Set(), out = [];
-  for (const i of items.sort((a, b) => b.published.localeCompare(a.published))) {
+  for (const i of [...items.sort(newest), ...retained.sort(newest)]) {
     const u = `${i.team}|${normUrl(i.url)}`, t = `${i.team}|${normTitle(i.title)}`;
     if (!i.url || seenUrl.has(u) || seenTitle.has(t)) continue;
     seenUrl.add(u); seenTitle.add(t); out.push(i);
   }
+  out.sort(newest);
   const capped = Object.keys(TEAMS).flatMap(k => out.filter(i => i.team === k).slice(0, PER_TEAM));
-  return { updated: new Date().toISOString(), sources, items: capped.sort((a, b) => b.published.localeCompare(a.published)) };
+  for (const i of capped) {
+    if (!i.stale) continue;
+    const source = failed.get(sourceKey(i.team, i.source));
+    source.staleCount = (source.staleCount || 0) + 1;
+  }
+  return { updated: new Date().toISOString(), sources, items: capped.sort(newest) };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const outFile = process.argv[2] || 'out/news.json';
-  const data = await collect();
+  const previous = await readFile(outFile, 'utf8').then(JSON.parse).catch(e => {
+    if (e.code === 'ENOENT') return { items:[] };
+    throw e;
+  });
+  if (!Array.isArray(previous?.items)) throw new Error('Previous news snapshot has no items array');
+  const data = await collect(previous.items);
   for (const s of data.sources) console.log(`${s.ok ? 'ok  ' : 'FAIL'} ${s.team.padEnd(9)} ${s.name.padEnd(20)} ${String(s.count).padStart(3)} ${s.ok ? s.feed : s.error}`);
   console.log(`${data.items.length} items`);
   if (!data.items.length) { console.error('No news collected; leaving the previous file in place.'); process.exit(1); }
