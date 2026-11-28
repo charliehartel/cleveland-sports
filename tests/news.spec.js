@@ -177,7 +177,7 @@ base('collector retains recent news for failed team sources and clears stale sta
       }] });
     }
     if (recovered && url.includes('cleveland.com/arc/outboundfeeds/rss/category/browns/')) {
-      return new Response(`<item><title>Browns roster update</title><link>https://www.cleveland.com/browns/updated</link><pubDate>${published(0)}</pubDate></item>`);
+      return new Response(`<rss><channel><item><title>Browns roster update</title><link>https://www.cleveland.com/browns/updated</link><pubDate>${published(0)}</pubDate></item></channel></rss>`);
     }
     return new Response('', { status:503 });
   };
@@ -262,3 +262,62 @@ test('retained news is labeled in both the team highlights and the article list'
   await page.locator('[data-filter="cavs"]').click();
   await expect(page.locator('.newslist .news')).toContainText('From previous update');
 });
+
+base('collector keeps saved articles when an HTTP 200 response is an error payload', async () => {
+  const { collect } = await import('../scripts/news.mjs');
+  const published = new Date().toISOString();
+  const previous = [
+    { team:'browns', source:'cleveland', title:'Saved local story', url:'https://www.cleveland.com/browns/old', published },
+    { team:'browns', source:'espn', title:'Saved ESPN story', url:'https://www.espn.com/nfl/old', published },
+  ];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async url => {
+    if (url.includes('/rss/category/browns/')) return new Response('<!DOCTYPE html><html><title>Temporarily unavailable</title></html>');
+    if (url.includes('/football/nfl/news?team=5&')) return Response.json({ error:'Temporarily unavailable' });
+    if (url.includes('/basketball/nba/news?team=5&')) return Response.json({ articles:[{
+      categories:[{ type:'team', teamId:'5' }], headline:'Cavaliers update', published,
+      links:{ web:{ href:'https://www.espn.com/nba/example' } },
+    }] });
+    return new Response('', { status:503 });
+  };
+  try {
+    const data = await collect(previous);
+    for (const { source, title } of previous) {
+      plainExpect(data.sources.find(s => s.team === 'browns' && s.id === source))
+        .toMatchObject({ ok:false, staleCount:1 });
+      plainExpect(data.items.find(i => i.title === title)).toMatchObject({ stale:true, published });
+    }
+    plainExpect(data.items.some(i => i.title === 'Cavaliers update')).toBe(true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+for (const [name, hash, failedStatus] of [['Home', '#/', 503], ['Team news', '#/t/nfl/5/news', 404]]) {
+  base(`${name} keeps articles through a manual refresh failure and recovers`, async ({ page }) => {
+    let status = 200;
+    const data = newsFile();
+    await page.route(/site\.api\.espn\.com/, route => route.fulfill({ json:{
+      team:{ id:'5', abbreviation:'CLE', displayName:'Cleveland Browns' }, events:[],
+    } }));
+    await page.route(/a\.espncdn\.com/, route => route.abort());
+    await page.route(/raw\.githubusercontent\.com\/.*news\.json/, route => status === 200
+      ? route.fulfill({ json:data })
+      : route.fulfill({ status }));
+    await page.goto('/' + hash);
+    const article = page.getByText('ESPN Browns story 0', { exact:true });
+    const notice = page.getByText('News refresh failed. Showing the previous update.', { exact:true });
+    await plainExpect(article).toBeVisible();
+
+    status = failedStatus;
+    await page.getByRole('button', { name:'Refresh now' }).click();
+    await plainExpect(notice).toBeVisible();
+    await plainExpect(article).toBeVisible();
+
+    status = 200;
+    data.items.find(i => i.title === 'ESPN Browns story 0').title = 'Updated Browns coverage';
+    await page.getByRole('button', { name:'Refresh now' }).click();
+    await plainExpect(page.getByText('Updated Browns coverage', { exact:true })).toBeVisible();
+    await plainExpect(notice).toHaveCount(0);
+  });
+}

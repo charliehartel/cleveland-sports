@@ -209,13 +209,26 @@ export function espnKeep(a, team) {
 async function espn(teamKey) {
   const t = TEAMS[teamKey];
   const d = await get(`https://site.api.espn.com/apis/site/v2/sports/${t.sport}/${t.league}/news?team=${t.espnId}&limit=50`, 'json');
-  return (d.articles || []).filter(a => espnKeep(a, t)).map(a => ({
+  if (!Array.isArray(d?.articles)) throw new Error('Invalid ESPN news payload');
+  return d.articles.filter(a => espnKeep(a, t)).map(a => ({
     title: a.headline, url: httpsOnly(a.links?.web?.href), published: a.published, summary: (a.description || '').slice(0, 280),
     author: a.byline || '', image: httpsOnly(a.images?.[0]?.url),
   }));
 }
 
 /* ---------- RSS ---------- */
+function parseFeedDocument(text) {
+  // An HTTP 200 can contain a site landing page or an outage notice.
+  const document = text.trim().replace(/^(?:(?:<\?[\s\S]*?\?>|<!--[\s\S]*?-->|<!DOCTYPE\s+[^>]*>)\s*)*/i, '');
+  const root = document.match(/^<(rss|feed|rdf:RDF)(?=[\s>])/i)?.[1];
+  if (!root || !new RegExp(`</${root}\\s*>\\s*(?:<!--[\\s\\S]*?-->\\s*)*$`, 'i').test(document)) {
+    throw new Error('Invalid RSS or Atom document');
+  }
+  if (root.toLowerCase() === 'rss' && !/<channel[\s>][\s\S]*<\/channel\s*>/i.test(document)) {
+    throw new Error('RSS document has no channel');
+  }
+  return parseFeed(document);
+}
 async function rss(source, teamKey, loadFeed) {
   const t = TEAMS[teamKey];
   const errors = [];
@@ -244,7 +257,7 @@ export async function collect(previous = []) {
   const jobs = [];
   const feeds = new Map();
   const loadFeed = url => {
-    if (!feeds.has(url)) feeds.set(url, get(url).then(parseFeed));
+    if (!feeds.has(url)) feeds.set(url, get(url).then(parseFeedDocument));
     return feeds.get(url);
   };
   for (const teamKey of Object.keys(TEAMS)) {

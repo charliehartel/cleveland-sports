@@ -385,11 +385,11 @@ const store = {
 };
 const FETCH_MS = 15000; // a request that hangs would otherwise stop the live refresh loop, which only reschedules once a request settles
 // Options object, not a plain number: getJSON is also used as a .map() callback, which passes the index as the second argument.
-async function getJSON(url, { timeout = FETCH_MS } = {}){
+async function getJSON(url, { timeout = FETCH_MS, cache } = {}){
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), timeout);
   try {
-    const r = await fetch(url, { signal:ctl.signal });
+    const r = await fetch(url, { signal:ctl.signal, cache });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     return await r.json();
   } catch (e) {
@@ -638,7 +638,7 @@ function renderHome(){
       : section('Today', b.today, 'No games today.') + section('Last 36 hours', b.recent, 'No games finished in the last 36 hours.')}
     ${section('Next 7 days', b.upcoming, 'Nothing scheduled in the next 7 days.')}
     ${VIEW.news ? `<div id="home-news">${newsBlock({ team:filter === 'all' ? null : filter, limit:homeNewsLimit, home:true })}</div>` : ''}`;
-  if (VIEW.news && !newsState.loading && (!newsState.data || Date.now() - newsState.fetchedAt > 5*60e3)) loadNews().then(() => { if (currentRoute().name === 'home') { const el = $('#home-news'); if (el) { const f = store.get(FILTER_KEY, 'all'); el.innerHTML = newsBlock({ team:f === 'all' ? null : f, limit:homeNewsLimit, home:true }); wireNews(); } } });
+  if (VIEW.news && (!newsState.data || Date.now() - newsState.fetchedAt >= 5*60e3)) loadNews().then(() => { if (currentRoute().name === 'home') { const el = $('#home-news'); if (el) { const f = store.get(FILTER_KEY, 'all'); el.innerHTML = newsBlock({ team:f === 'all' ? null : f, limit:homeNewsLimit, home:true }); wireNews(); } } });
   wireNews();
   $('#app').querySelectorAll('[data-filter]').forEach(el => el.onclick = () => { store.set(FILTER_KEY, el.dataset.filter); renderHome(); });
 }
@@ -3145,19 +3145,23 @@ const NEWS_URL = (() => {
   const repo = location.hostname.endsWith('.github.io') ? (location.pathname.split('/')[1] || 'my-sports') : 'my-sports';
   return `https://raw.githubusercontent.com/${owner}/${repo}/news-data/news.json`;
 })();
-const newsState = { data:null, loading:false, error:null, missing:false, source:'all', fetchedAt:0 };
+const newsState = { data:null, loading:null, error:null, missing:false, source:'all', fetchedAt:0 };
 let homeNewsLimit = 8;
 function myTeamKey(){ return VIEW.news && TEAMS.find(t => t.league === tview.league && String(t.id) === String(tview.id))?.key || null; } // News covers only views with a feed
-async function loadNews(){
-  if (newsState.data && Date.now() - newsState.fetchedAt < 5*60e3) return;
-  newsState.loading = true;
-  try {
-    const r = await fetch(NEWS_URL, { cache:'no-cache' });
-    if (r.status === 404) { newsState.missing = true; newsState.data = null; }
-    else if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    else { newsState.data = await r.json(); newsState.missing = false; newsState.error = null; newsState.fetchedAt = Date.now(); }
-  } catch (e) { newsState.error = e.message; }
-  newsState.loading = false;
+function loadNews(){
+  if (newsState.data && Date.now() - newsState.fetchedAt < 5*60e3) return Promise.resolve();
+  newsState.loading ||= (async () => {
+    try {
+      const data = await getJSON(NEWS_URL, { cache:'no-cache' });
+      if (!Array.isArray(data?.items)) throw new Error('News data unavailable');
+      Object.assign(newsState, { data, missing:false, error:null, fetchedAt:Date.now() });
+    } catch (e) {
+      newsState.missing = e.message === 'HTTP 404' && !newsState.data;
+      newsState.error = e.message;
+    }
+    finally { newsState.loading = null; }
+  })();
+  return newsState.loading;
 }
 // Mix sources: newest first, but avoid three stories in a row from the same outlet when another is close behind.
 function diversify(items){
@@ -3258,8 +3262,8 @@ window.addEventListener('hashchange', route);
 $('#refresh').onclick = () => {
   const r = currentRoute(); clearTimeout(timer);
   if (r.name === 'game') showGame(r.league, r.id);
-  else if (r.name === 'team') { tview.sched = null; tview.stats = null; tview.stand = null; newsState.data = null; showTeam(r.league, r.id, r.tab); }
-  else { newsState.data = null; showHome(); }
+  else if (r.name === 'team') { tview.sched = null; tview.stats = null; tview.stand = null; newsState.fetchedAt = 0; showTeam(r.league, r.id, r.tab); }
+  else { newsState.fetchedAt = 0; showHome(); }
 };
 document.addEventListener('visibilitychange', () => { if (!document.hidden) $('#refresh').click(); });
 route();
