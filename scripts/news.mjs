@@ -4,7 +4,7 @@
 //
 // Usage: node scripts/news.mjs out/news.json
 
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { writeFile, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
 const UA = 'Mozilla/5.0 (compatible; my-sports-news/1.0; +https://github.com/charliehartel/my-sports)';
@@ -216,13 +216,13 @@ async function espn(teamKey) {
 }
 
 /* ---------- RSS ---------- */
-async function rss(source, teamKey, loadFeed) {
+async function rss(source, teamKey) {
   const t = TEAMS[teamKey];
   const errors = [];
   for (const f of source.feeds[teamKey] || []) {
     const { url, filter } = typeof f === 'string' ? { url: f, filter: false } : f;
     try {
-      const items = (await loadFeed(url))
+      const items = parseFeed(await get(url))
         .filter(i => onDomain(i.url, source.domains))
         .filter(i => relevant(i, teamKey, filter ? 'general' : source.scope) && (!filter || names(`${i.title} ${i.summary}`, t)));
       if (items.length) return { url, items };
@@ -233,71 +233,42 @@ async function rss(source, teamKey, loadFeed) {
 }
 
 /* ---------- main ---------- */
-export async function collect(previous = []) {
+export async function collect() {
   const now = Date.now();
   const sources = [], items = [];
-  const failed = new Map();
-  const sourceKey = (team, source) => `${team}|${source}`;
-  const recent = ts => Number.isFinite(ts) && now - ts <= DAYS * 864e5 && ts - now <= 864e5;
   const jobs = [];
-  const feeds = new Map();
-  const loadFeed = url => {
-    if (!feeds.has(url)) feeds.set(url, get(url).then(parseFeed));
-    return feeds.get(url);
-  };
   for (const teamKey of Object.keys(TEAMS)) {
     jobs.push(espn(teamKey).then(list => ({ id: 'espn', name: 'ESPN', teamKey, url: 'site.api.espn.com', list }))
       .catch(e => ({ id: 'espn', name: 'ESPN', teamKey, error: e.message })));
     for (const s of RSS_SOURCES) {
       if (!s.feeds[teamKey]?.length) continue; // source doesn't cover this team
-      jobs.push(rss(s, teamKey, loadFeed).then(r => ({ id: s.id, name: s.names?.[teamKey] || s.name, teamKey, url: r.url, list: r.items, paywall: !!s.paywall }))
+      jobs.push(rss(s, teamKey).then(r => ({ id: s.id, name: s.names?.[teamKey] || s.name, teamKey, url: r.url, list: r.items, paywall: !!s.paywall }))
         .catch(e => ({ id: s.id, name: s.names?.[teamKey] || s.name, teamKey, error: e.message })));
     }
   }
   for (const r of await Promise.all(jobs)) {
-    const source = { id: r.id, name: r.name, team: r.teamKey, ok: !!r.list, count: r.list?.length || 0, feed: r.url || null, error: r.error || null };
-    sources.push(source);
-    if (!source.ok) failed.set(sourceKey(source.team, source.id), source);
+    sources.push({ id: r.id, name: r.name, team: r.teamKey, ok: !r.error, count: r.list?.length || 0, feed: r.url || null, error: r.error || null });
     for (const i of r.list || []) {
       const ts = Date.parse(i.published);
-      if (!recent(ts) || typeof i.title !== 'string' || !i.title.trim()) continue;
+      if (!isFinite(ts) || now - ts > DAYS * 864e5 || ts - now > 864e5) continue;
       items.push({ team: r.teamKey, source: r.id, sourceName: r.name, paywall: !!r.paywall,
         title: i.title, url: httpsOnly(i.url), published: new Date(ts).toISOString(), summary: i.summary, author: i.author, image: httpsOnly(i.image) });
     }
   }
-  const retained = [];
-  for (const i of previous) {
-    const source = i && failed.get(sourceKey(i.team, i.source));
-    const ts = Date.parse(i?.published);
-    if (!source || !recent(ts) || typeof i.title !== 'string' || !i.title.trim() || !httpsOnly(i.url)) continue;
-    retained.push({ ...i, sourceName:source.name, published:new Date(ts).toISOString(), stale:true });
-  }
-  // Prefer fresh coverage over retained duplicates. Within each group, keep the newest copy.
-  const newest = (a, b) => b.published.localeCompare(a.published);
+  // de-duplicate: same link, or the same headline from another outlet (syndicated copies)
   const seenUrl = new Set(), seenTitle = new Set(), out = [];
-  for (const i of [...items.sort(newest), ...retained.sort(newest)]) {
+  for (const i of items.sort((a, b) => b.published.localeCompare(a.published))) {
     const u = `${i.team}|${normUrl(i.url)}`, t = `${i.team}|${normTitle(i.title)}`;
     if (!i.url || seenUrl.has(u) || seenTitle.has(t)) continue;
     seenUrl.add(u); seenTitle.add(t); out.push(i);
   }
-  out.sort(newest);
   const capped = Object.keys(TEAMS).flatMap(k => out.filter(i => i.team === k).slice(0, PER_TEAM));
-  for (const i of capped) {
-    if (!i.stale) continue;
-    const source = failed.get(sourceKey(i.team, i.source));
-    source.staleCount = (source.staleCount || 0) + 1;
-  }
-  return { updated: new Date().toISOString(), sources, items: capped.sort(newest) };
+  return { updated: new Date().toISOString(), sources, items: capped.sort((a, b) => b.published.localeCompare(a.published)) };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const outFile = process.argv[2] || 'out/news.json';
-  const previous = await readFile(outFile, 'utf8').then(JSON.parse).catch(e => {
-    if (e.code === 'ENOENT') return { items:[] };
-    throw e;
-  });
-  if (!Array.isArray(previous?.items)) throw new Error('Previous news snapshot has no items array');
-  const data = await collect(previous.items);
+  const data = await collect();
   for (const s of data.sources) console.log(`${s.ok ? 'ok  ' : 'FAIL'} ${s.team.padEnd(9)} ${s.name.padEnd(20)} ${String(s.count).padStart(3)} ${s.ok ? s.feed : s.error}`);
   console.log(`${data.items.length} items`);
   if (!data.items.length) { console.error('No news collected; leaving the previous file in place.'); process.exit(1); }

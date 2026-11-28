@@ -216,24 +216,6 @@ test('preview refresh retries unavailable player stats and keeps successful resp
   }
 });
 
-test('retained news is labeled in both the team highlights and the article list', async ({ page }) => {
-  const published = new Date().toISOString();
-  const story = {
-    team:'cavs', source:'cleveland', sourceName:'cleveland.com', title:'Previous Cavaliers coverage',
-    url:'https://www.cleveland.com/example', published, stale:true,
-  };
-  await page.route(/raw\.githubusercontent\.com\/.*news\.json/, route => route.fulfill({ json:{
-    updated:published,
-    sources:[{ id:'cleveland', team:'cavs', name:'cleveland.com', ok:false, staleCount:1 }],
-    items:[story],
-  } }));
-  await page.goto('/#/');
-  await expect(page.locator('.latest .lrow')).toContainText('From previous update');
-  await expect(page.locator('#home-news .note')).toContainText('From cleveland.com. Not reachable right now: cleveland.com');
-  await page.getByRole('button', { name:'Cavaliers' }).click();
-  await expect(page.locator('.newslist .news')).toContainText('From previous update');
-});
-
 test('an incomplete successful response reports an error and the game can recover', async ({ page }) => {
   await page.clock.install();
   let polls = 0;
@@ -324,12 +306,16 @@ test('Bay Area polls only scoreboards while schedules are fresh and keeps scores
   await page.getByRole('button', { name:'Refresh now' }).click();
   await expect(page.locator('#updated')).toHaveText('ESPN updates delayed');
   await expect(page.locator('.card')).toContainText('8');
+  await expect(page.locator('.card .status-stale')).toContainText(/Bottom 7th · score as of \d/); // the card itself says its score is old
+  await expect(page.locator('.card .status-live')).toHaveCount(0);
   expect([schedules, boards]).toEqual([42, 24]);
   offline = false;
   score = '9';
   await page.getByRole('button', { name:'Refresh now' }).click();
   await expect(page.locator('.card')).toContainText('9');
   await expect(page.locator('#updated')).toContainText('Updated');
+  await expect(page.locator('.card .status-live')).toHaveText('Bottom 7th');
+  await expect(page.locator('.card .status-stale')).toHaveCount(0);
 });
 
 test('NHL samples retry failed faceoffs and stop upstream calls at the cap', async ({ page }) => {
