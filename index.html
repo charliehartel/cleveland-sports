@@ -1596,7 +1596,11 @@ function nhlStreaksFor(tid, aid, goalie, teamRank){
     if (teamRank <= 3 && gdry >= 8 && dry < 4) out.push({ hot:false, kind:'noGoals', n:gdry, text:`no goals in ${gdry} games` });
   }
   const l5 = evs.slice(0, 5);
-  if (!pts && l5.length === 5 && sum(5, 'points') >= 7) out.push({ hot:true, kind:'last5', text:`${sum(5, 'points')} points in his last 5 games` });
+  // a big last 5 counts even if a point streak just started (a 1- or 2-game streak isn't listed on its own)
+  const l5pts = sum(5, 'points'), l5games = l5.filter(e => N(e, 'points') > 0).length;
+  if (pts < 3 && l5.length === 5 && l5pts >= 6) out.push({ hot:true, kind:'last5', text:`${l5pts} points in his last 5 games` });
+  // scoring in most games without an unbroken streak
+  else if (pts < 3 && l5.length === 5 && l5games >= 4) out.push({ hot:true, kind:'last5', text:`points in ${l5games} of his last 5 games (${l5pts} total)` });
   return out;
 }
 // Goalies to check: the preview's goalie list, or (once the game starts) each team's goalies with games this season
@@ -1641,7 +1645,10 @@ function nhlStreaks(g){
       return `<li><div class="top"><span class="tagx ${r.hot ? 'hot' : 'cold'}">${r.hot ? 'Hot' : 'Cold'}</span><span class="nm">${esc(r.name)}</span><span class="small">${esc(r.pos || '')}</span>${pre && out.has(r.id) ? '<span class="tagx out">Out</span>' : ''}${tn ? `<span class="tagx ${tn.cls}">${esc(tn.text)}</span>` : ''}</div><div class="meta">${esc(r.text)}${pre ? '' : ' coming into tonight'}</div></li>`;
     }).join('')}</ul>`;
   };
-  return `<div class="box"><h3>Streaks <span class="sub">${pre ? 'top scorers and goalies, games played' : 'coming into tonight, and what this game has done to them'}</span></h3>${twoCols(g, body)}</div>`;
+  // the most recent game in anyone's log, so it's clear which games are counted
+  const latest = Object.values(x?.logs || {}).map(l => l[0]?.date).filter(Boolean).sort((a, b) => b - a)[0];
+  const thru = latest ? `, through ${shortDate(latest)}` : '';
+  return `<div class="box"><h3>Streaks <span class="sub">${pre ? `top scorers and goalies, games played${thru}` : 'coming into tonight, and what this game has done to them'}</span></h3>${twoCols(g, body)}</div>`;
 }
 function nhlSeries(g){
   const ser = (g.s.seasonseries || []).find(x => x.type === 'season') || g.s.seasonseries?.[0];
