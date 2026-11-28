@@ -22,6 +22,8 @@ export const TEAMS = {
   sharks:    { league: 'nhl', sport: 'hockey',     espnId: '18', words: ['sharks'], paths: ['sharks', 'san-jose-sharks'] },
   athletics: { league: 'mlb', sport: 'baseball',   espnId: '11', words: ['athletics', "a's"], paths: ['athletics', 'oakland-athletics', 'as'] },
   raiders:   { league: 'nfl', sport: 'football',   espnId: '13', words: ['raiders'], paths: ['raiders', 'las-vegas-raiders'] },
+  valkyries: { league: 'wnba', sport: 'basketball', espnId: '129689', words: ['valkyries'], paths: ['valkyries', 'golden-state-valkyries'] },
+  stanford:  { league: 'college-football', sport: 'football', espnId: '24', words: ['stanford'], paths: ['stanford', 'stanford-cardinal'] },
   // New York
   mets:      { league: 'mlb', sport: 'baseball',   espnId: '21', words: ['mets'], paths: ['mets', 'new-york-mets'] },
   nygiants:  { league: 'nfl', sport: 'football',   espnId: '19', words: ['ny giants', 'new york giants', 'giants'], paths: ['new-york-giants', 'ny-giants'] },
