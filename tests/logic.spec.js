@@ -221,6 +221,48 @@ test('ESPN text is escaped before it reaches the page', async ({ page }) => {
   expect(r).toEqual({ injected: 0, badSrc: false, text: true });
 });
 
+test('upcoming cards show record, division rank and streak from the standings', async ({ page }) => {
+  const r = await page.evaluate(() => {
+    const stat = (name, value, displayValue) => ({ name, value, displayValue: displayValue ?? String(value) });
+    const entry = (id, abbr, st) => ({ team: { id, abbreviation: abbr, displayName: abbr }, stats: st });
+    const nhl = { children: [{ name: 'Western Conference', children: [{ name: 'Pacific Division', standings: { entries: [ // ESPN's order isn't rank order
+      entry('18', 'SJ', [stat('wins', 12), stat('losses', 10), stat('otLosses', 3), stat('points', 27), stat('gamesPlayed', 25), stat('streak', 3, 'W3')]),
+      entry('37', 'VGK', [stat('wins', 15), stat('losses', 6), stat('otLosses', 4), stat('points', 34), stat('gamesPlayed', 25), stat('streak', 1, 'L1')]),
+    ] } }] }] };
+    const nba = { children: [{ name: 'Western Conference', children: [{ name: 'Pacific', standings: { entries: [
+      entry('9', 'GS', [stat('wins', 10), stat('losses', 9), stat('winPercent', 10 / 19), stat('streak', 2, 'L2')]),
+      entry('13', 'LAL', [stat('wins', 14), stat('losses', 5), stat('winPercent', 14 / 19), stat('streak', 2, 'T2')]),
+    ] } }] }] };
+    const mlb = { children: [{ name: 'National League', children: [{ name: 'National League West', standings: { entries: [
+      entry('26', 'SF', [stat('wins', 0), stat('losses', 0), stat('gamesPlayed', 0)]), // before opening day
+    ] } }] }] };
+    const cfb = { children: [{ name: 'Atlantic Coast Conference', standings: { entries: [
+      entry('2390', 'MIA', [{ name: 'overall', summary: '10-1' }, stat('streak', 2, 'W2')]),
+      entry('24', 'STAN', [{ name: 'overall', summary: '7-5' }, stat('streak', 4, 'W4')]),
+    ] } }] };
+    const pick = m => Object.fromEntries([...m].map(([id, v]) => [id, v]));
+    const out = { nhl: pick(standingsByTeam('nhl', nhl)), nba: pick(standingsByTeam('nba', nba)), mlb: pick(standingsByTeam('mlb', mlb)), cfb: pick(standingsByTeam('college-football', cfb)) };
+    // rendered on a card: future NBA games come without records
+    cardStandings.set('nba', { at: Date.now(), value: standingsByTeam('nba', nba) });
+    const side = (id, abbr) => ({ id, abbr, name: abbr, short: abbr, logo: '', score: null, winner: false, record: '' });
+    const g = st => ({ id: '1', league: 'nba', team: { league: 'nba', color: 'red' }, state: st, date: new Date(Date.now() + 864e5), detail: '', home: side('9', 'GS'), away: side('13', 'LAL'), broadcast: '', venue: '' });
+    const el = document.createElement('div');
+    el.innerHTML = card(g('pre'));
+    out.pre = [...el.querySelectorAll('.trow .nm')].map(n => n.textContent);
+    el.innerHTML = card({ ...g('post'), home: { ...side('9', 'GS'), score: '100', record: '11-9' }, away: { ...side('13', 'LAL'), score: '98', record: '14-6' } });
+    out.post = [...el.querySelectorAll('.trow .nm')].map(n => n.textContent);
+    cardStandings.clear();
+    return out;
+  });
+  expect(r.nhl).toEqual({ '37': { record: '15-6-4', rank: '1st in Pacific', streak: '' }, '18': { record: '12-10-3', rank: '2nd in Pacific', streak: 'Won 3 straight' } });
+  expect(r.nba['9']).toEqual({ record: '10-9', rank: '2nd in Pacific', streak: 'Lost 2 straight' });
+  expect(r.nba['13'].streak).toBe(''); // only win and loss streaks
+  expect(r.mlb).toEqual({});
+  expect(r.cfb['24']).toEqual({ record: '7-5', rank: '2nd in Atlantic Coast', streak: 'Won 4 straight' });
+  expect(r.pre).toEqual(['LAL14-51st in Pacific', 'GS10-92nd in Pacific · Lost 2 straight']);
+  expect(r.post).toEqual(['LAL14-6', 'GS11-9']); // results keep ESPN's post-game record and no extras
+});
+
 // Guard check: an ESPN endpoint that doesn't allow web pages (the team-info endpoint that once
 // broke team pages) must be reported in these tests, the same way a phone's browser blocks it.
 const { test: plain, expect: plainExpect } = require('@playwright/test');

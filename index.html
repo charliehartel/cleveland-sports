@@ -80,6 +80,7 @@ h2.sec .count{color:var(--faint);font-weight:500}
 .trow img,.logo{width:26px;height:26px;object-fit:contain;flex:none}
 .trow .nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .trow .rec{color:var(--faint);font-size:12px;margin-left:4px}
+.trow .tsub{display:block;color:var(--faint);font-size:11.5px;overflow:hidden;text-overflow:ellipsis}
 .trow .sc{font-weight:700;font-size:18px;min-width:2ch;text-align:right}
 .trow.lose{color:var(--muted)}
 .trow.win .nm{font-weight:700}
@@ -644,6 +645,7 @@ async function showHome(refreshSchedules = true){
   const busy = games.some(g => g.state === 'in' || (g.state === 'pre' && g.date - now < 30*60e3 && g.date - now > -3*H));
   schedule(() => showHome(false), busy ? 30e3 : SCHEDULE_MS);
 
+  fillCardStandings(games).then(changed => { if (changed && active()) renderHome(); });
   const nearby = games.filter(g => g.date.getTime() < now + 8*24*H && g.date.getTime() > now - 2*24*H && g.bay?.regional);
   if (nearby.length && await refineBay(nearby) && active()) renderHome();
 }
@@ -657,10 +659,54 @@ function buckets(games, filter){
   const upcoming = gs.filter(g => g.state === 'pre' && !sameDay(g.date, now) && g.date > now && g.date - now <= 7*24*H).sort((a,b) => a.date-b.date);
   return { live, today, recent, upcoming };
 }
+/* ---------- Standings on game cards ---------- */
+// Upcoming and live cards show each team's record, division rank and win/loss streak from the league standings
+// (team schedules leave records off future NBA and NHL games). One standings request per league, every 30 minutes.
+const STANDINGS_MS = 30*60e3;
+const cardStandings = new Map(); // league -> cache entry whose value is Map(teamId -> { record, rank, streak })
+const groupLabel = n => String(n || '').replace(/^American League\b/, 'AL').replace(/^National League\b/, 'NL')
+  .replace(/\s+(Division|Conference)$/i, '');
+function streakText(v){
+  const m = String(v || '').match(/^([WL])(\d+)$/); // ties and overtime-loss streaks are left out
+  return m && +m[2] >= 2 ? `${m[1] === 'W' ? 'Won' : 'Lost'} ${m[2]} straight` : ''; // a 1-game streak isn't news
+}
+function standingsByTeam(league, d){
+  const out = new Map(), leaves = [];
+  const walk = n => { const kids = (n.children || []).filter(c => c.standings?.entries?.length || c.children?.length);
+    if (n.standings?.entries?.length && !kids.length) leaves.push(n); kids.forEach(walk); };
+  walk(d || {});
+  for (const gr of leaves) {
+    const rows = standRows(gr.standings.entries);
+    if (league !== 'college-football') rows.sort(byRecord); // ESPN lists divisions in no set order; college keeps ESPN's
+    rows.forEach((r, i) => {
+      if (!r.gp && !r.w && !r.l) return; // season hasn't started: no rank or record worth showing
+      const otl = r.st.otLosses?.value ?? 0;
+      const record = league === 'college-football' ? (r.st.overall?.summary || `${r.w}-${r.l}`)
+        : league === 'nhl' ? `${r.w}-${r.l}-${otl}` : r.t ? `${r.w}-${r.l}-${r.t}` : `${r.w}-${r.l}`;
+      out.set(r.id, { record, rank:`${ordinal(i + 1)} in ${groupLabel(gr.name)}`, streak:streakText(r.st.streak?.displayValue) });
+    });
+  }
+  return out;
+}
+function loadCardStandings(league){
+  return cachedResponse(cardStandings, league, STANDINGS_MS, () =>
+    getJSON(`https://site.api.espn.com/apis/v2/sports/${SPORT[league]}/${league}/standings?level=3`).then(d => standingsByTeam(league, d)));
+}
+// Leagues with an upcoming or live game this week; returns true when new standings arrived.
+async function fillCardStandings(games){
+  const now = Date.now();
+  const leagues = [...new Set(games.filter(g => g.state === 'in' || (g.state === 'pre' && g.date - now <= 7*24*H)).map(g => g.league))];
+  const before = leagues.map(l => cardStandings.get(l)?.at);
+  await Promise.allSettled(leagues.map(loadCardStandings));
+  return leagues.some((l, i) => cardStandings.get(l)?.at !== before[i]);
+}
+const cardStanding = (g, s) => (g.state === 'pre' || g.state === 'in') && s.id ? cardStandings.get(g.league)?.value?.get(String(s.id)) : null;
 function teamRow(s, g){
   const showScore = g.state !== 'pre' && s.score != null;
   const cls = g.state === 'post' && showScore ? (s.winner ? 'win' : 'lose') : '';
-  return `<div class="trow ${cls}">${teamLink(g.team.league, { id:s.id, displayName:s.name, abbreviation:s.abbr }, img(s.logo, '', s.abbr), true)}<span class="nm">${esc(s.short || s.name)}<span class="rec">${esc(s.record)}</span></span>${showScore ? `<span class="sc">${esc(s.score)}</span>` : ''}</div>`;
+  const sd = cardStanding(g, s);
+  const sub = sd ? [sd.rank, sd.streak].filter(Boolean).join(' · ') : '';
+  return `<div class="trow ${cls}">${teamLink(g.team.league, { id:s.id, displayName:s.name, abbreviation:s.abbr }, img(s.logo, '', s.abbr), true)}<span class="nm">${esc(s.short || s.name)}<span class="rec">${esc(s.record || sd?.record || '')}</span>${sub ? `<span class="tsub">${esc(sub)}</span>` : ''}</span>${showScore ? `<span class="sc">${esc(s.score)}</span>` : ''}</div>`;
 }
 function card(g){
   let status;
