@@ -2134,7 +2134,7 @@ function seasonLabel(league, y){ return league === 'nba' || league === 'nhl' ? `
 async function showTeam(league, id, tab){
   const fresh = tview.league !== league || tview.id !== id;
   if (fresh) Object.assign(tview, { league, id, schedCurrent:null, statCurrent:null, season:null, info:null, sched:null, stats:null, players:null, statSeason:null, stype:2, nba:null, l10:null, cat:null, sort:null, allCols:false, note:'',
-    stand:null, standSeason:null, standCurrent:null, standNote:'', showAll:null });
+    stand:null, standSeason:null, standCurrent:null, standNote:'', nhlL:null, showAll:null });
   tview.tab = tab || 'schedule';
   if (!tview.info) $('#app').innerHTML = `<a class="back" href="#/">← All games</a><div class="loading">Loading team…</div>`;
   const base = `${API}/${SPORT[league]}/${league}/teams/${id}`;
@@ -2218,6 +2218,9 @@ async function loadTeamStats(base){
   tview.stats = d.st;
   tview.players = d.pl;
   tview.nba = null;
+  if (tview.league === 'nhl') {
+    try { tview.nhlL = await nhlLeague(d.year, tview.stype); } catch { tview.nhlL = null; }
+  }
   if (tview.league === 'nba' && tview.stype === 2) {
     try { tview.nba = await nbaLeague(d.year); } catch { tview.nba = null; }
     if (tview.rmode === 'last10') loadLast10();
@@ -2339,19 +2342,24 @@ function teamTiles(){
     add('Turnover margin', d(S, 'miscellaneous', 'turnOverDifferential'));
     add('Sacks / allowed', v(S, 'defensive', 'sacks') != null ? `${d(S, 'defensive', 'sacks')} / ${d(S, 'passing', 'sacks')}` : null);
   } else if (L === 'nhl') {
-    const gp = v(S, 'general', 'games');
-    const gf = v(S, 'offensive', 'goals'), ga = v(S, 'defensive', 'goalsAgainst');
-    add('Goals / game', fix(gf / gp, 2));
-    add('Allowed / game', d(S, 'defensive', 'avgGoalsAgainst'));
-    add('Goal diff', gf != null && ga != null ? (gf - ga > 0 ? '+' : '') + (gf - ga) : null);
-    add('Shots / game', fix(v(S, 'offensive', 'shotsTotal') / gp, 1));
-    add('Shots against / game', fix(v(S, 'defensive', 'shotsAgainst') / gp, 1));
-    add('Shooting %', d(S, 'offensive', 'shootingPct'));
-    add('Save %', d(S, 'defensive', 'savePct'));
-    add('PDO', fix(v(S, 'offensive', 'shootingPct') + 100 * v(S, 'defensive', 'savePct'), 1), 'Shooting % + save %: around 100 is normal, far above or below usually evens out');
-    add('Power-play goals', d(S, 'offensive', 'powerPlayGoals'));
-    add('Faceoff %', d(S, 'offensive', 'faceoffPercent'));
-    add('PIM / game', fix(v(S, 'penalties', 'penaltyMinutes') / gp, 1));
+    // values and NHL ranks from every team's season stats (1st = best; for allowed, against and PIM, 1st = fewest)
+    const lg = tview.nhlL, me = lg?.[String(tview.id)];
+    const gp = v(S, 'general', 'games'), own = me || {
+      gpg:v(S, 'offensive', 'goals') / gp, gaa:v(S, 'defensive', 'avgGoalsAgainst'), diff:v(S, 'offensive', 'goals') - v(S, 'defensive', 'goalsAgainst'),
+      spg:v(S, 'offensive', 'shotsTotal') / gp, sapg:v(S, 'defensive', 'shotsAgainst') / gp, sh:v(S, 'offensive', 'shootingPct'), sv:v(S, 'defensive', 'savePct'),
+      pp:v(S, 'offensive', 'powerPlayPct'), pk:v(S, 'defensive', 'penaltyKillPct'), fo:v(S, 'offensive', 'faceoffPercent'), pim:v(S, 'penalties', 'penaltyMinutes') / gp };
+    const t = (label, k, value, tip = '') => { if (value != null && value !== '' && !/NaN|undefined/.test(String(value))) tiles.push({ label, value, tip, rk:nhlRank(lg, tview.id, k) }); };
+    t('Goals / game', 'gpg', fix(own.gpg, 2));
+    t('Allowed / game', 'gaa', fix(own.gaa, 2));
+    t('Goal diff', 'diff', own.diff == null || !isFinite(own.diff) ? null : (own.diff > 0 ? '+' : '') + Math.round(own.diff));
+    t('Shots / game', 'spg', fix(own.spg, 1));
+    t('Shots against / game', 'sapg', fix(own.sapg, 1));
+    t('Shooting %', 'sh', fix(own.sh, 1));
+    t('Save %', 'sv', own.sv == null || !isFinite(own.sv) ? null : own.sv.toFixed(3).replace(/^0/, ''));
+    t('Power play %', 'pp', fix(own.pp, 1));
+    t('Penalty kill %', 'pk', fix(own.pk, 1));
+    t('Faceoff %', 'fo', fix(own.fo, 1));
+    t('PIM / game', 'pim', fix(own.pim, 1), 'Penalty minutes per game; ranked from fewest');
   } else {
     const g = v(S, 'batting', 'teamGamesPlayed');
     add('Runs / game', fix(v(S, 'batting', 'runs') / g, 2));
@@ -2375,7 +2383,8 @@ function renderTeamStatsPage(){
   const toolbar = `<div class="toolbar">${seasonSelect(tview.statCurrent, tview.statSeason)}
     <span class="pchips" style="margin:0">${[[2, 'Regular season'], [3, 'Playoffs']].map(([v, l]) => `<button class="chip" data-stype="${v}" aria-pressed="${tview.stype === v}">${l}</button>`).join('')}</span></div>${tview.note ? `<div class="note" style="margin:0 0 12px">${esc(tview.note)}</div>` : ''}`;
   const overall = tview.league === 'nba' ? nbaOverall() : `<div class="box"><h3>Overall <span class="sub">${esc(seasonLabel(tview.league, tview.statSeason))} ${tview.stype === 3 ? 'playoffs' : 'regular season'}</span></h3>
-    ${tiles.length ? `<div class="tiles">${tiles.map(t => `<div class="tile" title="${esc(t.tip)}"><div class="tv num">${esc(t.value)}</div><div class="tl">${esc(t.label)}</div></div>`).join('')}</div>` : '<div class="empty">No team stats yet.</div>'}
+    ${tiles.length ? `<div class="tiles">${tiles.map(t => t.rk ? rankTile(t.label, t.value, t.rk, t.tip) : `<div class="tile" title="${esc(t.tip)}"><div class="tv num">${esc(t.value)}</div><div class="tl">${esc(t.label)}</div></div>`).join('')}</div>` : '<div class="empty">No team stats yet.</div>'}
+    ${tiles.some(t => t.rk) ? `<div class="note">Ranks are among all ${Object.keys(tview.nhlL || {}).length} NHL teams; for goals allowed, shots against and penalty minutes, 1st is the fewest.</div>` : ''}
     </div>`;
   const all = cats.length ? `<div class="box"><h3>All team stats <span class="sub">tap a category</span></h3>${cats.map(c => {
       const rows = (c.stats || []).filter(s => s.displayValue !== undefined && !/^(teamGamesPlayed|gamesPlayed|gamesStarted|isQualified)$/.test(s.name));
@@ -2584,6 +2593,39 @@ async function loadLast10(){
   if (currentRoute().name === 'team' && tview.tab === 'stats' && tview.id === want.split('-')[0]) renderTeam();
 }
 const NBA_LOWER = new Set(['drtg', 'tovp']);
+/* ---------- NHL: league table for team-stat ranks ---------- */
+const nhlLeagueCache = {};
+const NHL_LOWER = new Set(['gaa', 'sapg', 'pim']);
+async function nhlLeague(season, stype){
+  const key = `${season}-${stype}`;
+  nhlLeagueCache[key] ||= (async () => {
+    // team ids from the standings (ESPN's /teams list doesn't allow web pages to read it)
+    const stand = await getJSON(`https://site.api.espn.com/apis/v2/sports/hockey/nhl/standings?season=${season}`);
+    const ids = [...new Set((stand.children || []).flatMap(c => [...(c.standings?.entries || []), ...(c.children || []).flatMap(d => d.standings?.entries || [])]).map(e => String(e.team?.id)).filter(Boolean))];
+    const teams = {};
+    await Promise.all(ids.map(async id => {
+      try {
+        const d = await getJSON(`https://sports.core.api.espn.com/v2/sports/hockey/leagues/nhl/seasons/${season}/types/${stype}/teams/${id}/statistics`);
+        const ix = {};
+        for (const c of d.splits?.categories || []) for (const st of c.stats || []) (ix[c.name] ||= {})[st.name] = Number(st.value);
+        const g = ix.general?.games, o = ix.offensive || {}, df = ix.defensive || {};
+        if (!g) return;
+        teams[id] = { gpg:o.goals / g, gaa:df.avgGoalsAgainst ?? df.goalsAgainst / g, diff:o.goals - df.goalsAgainst, spg:o.shotsTotal / g,
+          sapg:df.shotsAgainst / g, sh:o.shootingPct, sv:df.savePct, pp:o.powerPlayPct, pk:df.penaltyKillPct, fo:o.faceoffPercent, pim:(ix.penalties?.penaltyMinutes ?? NaN) / g };
+      } catch {}
+    }));
+    if (Object.keys(teams).length < 24) throw new Error('league data incomplete');
+    return teams;
+  })();
+  try { return await nhlLeagueCache[key]; } catch (e) { delete nhlLeagueCache[key]; throw e; }
+}
+function nhlRank(teams, id, k){
+  const mine = teams?.[String(id)]?.[k];
+  if (mine == null || !isFinite(mine)) return null;
+  const vals = Object.values(teams).map(t => t[k]).filter(x => x != null && isFinite(x));
+  const better = vals.filter(x => NHL_LOWER.has(k) ? x < mine : x > mine).length;
+  return { rank:better + 1, of:vals.length };
+}
 function nbaRank(teams, id, k){
   const arr = Object.entries(teams || {}).filter(([, t]) => isFinite(t.m[k]));
   if (!arr.some(([tid]) => tid === String(id))) return null;
