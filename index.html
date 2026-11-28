@@ -3237,9 +3237,11 @@ function standRows(entries){
   return entries.map(e => {
     const st = {};
     for (const x of e.stats || []) if (!(x.name in st)) st[x.name] = x; // first one wins (college splits repeat names)
-    // college football has no overall losses stat, only the "6-5" overall record
+    // College standings can supply wins and losses only through the overall record.
     const rec = String(st.overall?.summary || st.overall?.displayValue || '').split('-').map(Number);
-    const w = st.wins?.value ?? 0, l = st.losses?.value ?? (rec.length >= 2 && isFinite(rec[1]) ? rec[1] : 0), t = st.ties?.value ?? 0;
+    const w = st.wins?.value ?? (rec.length >= 2 && Number.isFinite(rec[0]) ? rec[0] : 0);
+    const l = st.losses?.value ?? (rec.length >= 2 && Number.isFinite(rec[1]) ? rec[1] : 0);
+    const t = st.ties?.value ?? 0;
     const pct = st.winPercent?.value ?? (w + l + t ? (w + t / 2) / (w + l + t) : 0);
     const gp = st.gamesPlayed?.value ?? (w + l + t + (st.otLosses?.value ?? 0)), pts = st.points?.value ?? null;
     return { id:String(e.team?.id), abbr:e.team?.abbreviation, name:e.team?.displayName, short:e.team?.shortDisplayName || e.team?.name,

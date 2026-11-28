@@ -237,8 +237,9 @@ test('upcoming cards show record, division rank and streak from the standings', 
       entry('26', 'SF', [stat('wins', 0), stat('losses', 0), stat('gamesPlayed', 0)]), // before opening day
     ] } }] }] };
     const cfb = { children: [{ name: 'Atlantic Coast Conference', standings: { entries: [
-      entry('2390', 'MIA', [{ name: 'overall', summary: '10-1' }, stat('streak', 2, 'W2')]),
+      entry('2390', 'MIA', [{ name: 'overall', summary: '10-0' }, stat('streak', 10, 'W10')]),
       entry('24', 'STAN', [{ name: 'overall', summary: '7-5' }, stat('streak', 4, 'W4')]),
+      entry('150', 'DUKE', [{ name: 'overall', summary: '0-0' }]),
     ] } }] };
     const pick = m => Object.fromEntries([...m].map(([id, v]) => [id, v]));
     const out = { nhl: pick(standingsByTeam('nhl', nhl)), nba: pick(standingsByTeam('nba', nba)), mlb: pick(standingsByTeam('mlb', mlb)), cfb: pick(standingsByTeam('college-football', cfb)) };
@@ -251,6 +252,12 @@ test('upcoming cards show record, division rank and streak from the standings', 
     out.pre = [...el.querySelectorAll('.trow .nm')].map(n => n.textContent);
     el.innerHTML = card({ ...g('post'), home: { ...side('9', 'GS'), score: '100', record: '11-9' }, away: { ...side('13', 'LAL'), score: '98', record: '14-6' } });
     out.post = [...el.querySelectorAll('.trow .nm')].map(n => n.textContent);
+    const league = 'college-football';
+    cardStandings.set(league, { at: Date.now(), value: standingsByTeam(league, cfb) });
+    out.cfbCards = ['pre', 'in'].map(state => {
+      el.innerHTML = card({ ...g(state), league, team: { league, color: 'red' }, home: side('2390', 'MIA'), away: side('24', 'STAN') });
+      return [...el.querySelectorAll('.trow .nm')].map(n => n.textContent);
+    });
     out.streaks = ['W1', 'L4', 'OT1', 'OTL2', 'W0', ''].map(streakText);
     cardStandings.clear();
     return out;
@@ -260,7 +267,12 @@ test('upcoming cards show record, division rank and streak from the standings', 
   expect(r.nba['13'].streak).toBe('Tied 2 straight');
   expect(r.streaks).toEqual(['Won last game', 'Lost 4 straight', 'Lost last game in OT', 'Lost 2 straight in OT', '', '']);
   expect(r.mlb).toEqual({});
-  expect(r.cfb['24']).toEqual({ record: '7-5', rank: '2nd in Atlantic Coast', streak: 'Won 4 straight' });
+  expect(r.cfb).toEqual({
+    '2390': { record: '10-0', rank: '1st in Atlantic Coast', streak: 'Won 10 straight' },
+    '24': { record: '7-5', rank: '2nd in Atlantic Coast', streak: 'Won 4 straight' },
+  });
+  const collegeTeams = ['STAN7-52nd in Atlantic Coast · Won 4 straight', 'MIA10-01st in Atlantic Coast · Won 10 straight'];
+  expect(r.cfbCards).toEqual([collegeTeams, collegeTeams]);
   expect(r.pre).toEqual(['LAL14-51st in Pacific · Tied 2 straight', 'GS10-92nd in Pacific · Lost 2 straight']);
   expect(r.post).toEqual(['LAL14-6', 'GS11-9']); // results keep ESPN's post-game record and no extras
 });
