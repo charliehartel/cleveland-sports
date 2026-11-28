@@ -18,7 +18,7 @@ export const TEAMS = {
   // Bay Area
   warriors:  { league: 'nba', sport: 'basketball', espnId: '9',  words: ['warriors'], paths: ['warriors', 'golden-state-warriors'] },
   niners:    { league: 'nfl', sport: 'football',   espnId: '25', words: ['49ers', 'niners'], paths: ['49ers', 'san-francisco-49ers'] },
-  giants:    { league: 'mlb', sport: 'baseball',   espnId: '26', words: ['giants'], paths: ['giants', 'sf-giants', 'san-francisco-giants'] },
+  giants:    { league: 'mlb', sport: 'baseball',   espnId: '26', words: ['giants'], not: ['ny giants', 'new york giants', 'big blue', '49ers', 'niners'], paths: ['giants', 'sf-giants', 'san-francisco-giants'] },
   sharks:    { league: 'nhl', sport: 'hockey',     espnId: '18', words: ['sharks'], paths: ['sharks', 'san-jose-sharks'] },
   athletics: { league: 'mlb', sport: 'baseball',   espnId: '11', words: ['athletics', "a's"], paths: ['athletics', 'oakland-athletics', 'as'] },
   raiders:   { league: 'nfl', sport: 'football',   espnId: '13', words: ['raiders'], paths: ['raiders', 'las-vegas-raiders'] },
@@ -26,7 +26,7 @@ export const TEAMS = {
   stanford:  { league: 'college-football', sport: 'football', espnId: '24', words: ['stanford'], paths: ['stanford', 'stanford-cardinal'] },
   // New York
   mets:      { league: 'mlb', sport: 'baseball',   espnId: '21', words: ['mets'], paths: ['mets', 'new-york-mets'] },
-  nygiants:  { league: 'nfl', sport: 'football',   espnId: '19', words: ['ny giants', 'new york giants', 'giants'], paths: ['new-york-giants', 'ny-giants'] },
+  nygiants:  { league: 'nfl', sport: 'football',   espnId: '19', words: ['ny giants', 'new york giants', 'giants'], not: ['sf giants', 'san francisco giants'], paths: ['new-york-giants', 'ny-giants'] },
   knicks:    { league: 'nba', sport: 'basketball', espnId: '18', words: ['knicks'], paths: ['knicks', 'new-york-knicks'] },
   yankees:   { league: 'mlb', sport: 'baseball',   espnId: '10', words: ['yankees', 'yanks'], paths: ['yankees', 'new-york-yankees'] },
   jets:      { league: 'nfl', sport: 'football',   espnId: '20', words: ['jets'], paths: ['jets', 'new-york-jets'] },
@@ -180,6 +180,8 @@ async function get(url, type = 'text') {
 const host = u => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return ''; } };
 const onDomain = (u, domains) => domains.some(d => host(u) === d || host(u).endsWith('.' + d));
 export const mentions = (text, words) => words.some(w => new RegExp(`\\b${w}\\b`, 'i').test(text));
+// Named in the text, and not as the other team with the same nickname (SF Giants vs NY Giants)
+export const names = (text, t) => mentions(text, t.words) && !mentions(text, t.not || []);
 // Filler that isn't news: betting and picks, fantasy, podcasts, promotions.
 const JUNK = /\b(best bets?|betting (odds|lines|picks|preview|trends)|odds and picks|player props|straight-up picks|picks against the spread|spread picks|game picks|expert picks|staff picks|fantasy|podcast|sweepstakes|giveaway|sign up|text alerts|win tickets|presented by|promo code|ticket deals?)\b/i;
 // League-wide formats that show up in team feeds.
@@ -189,12 +191,12 @@ export function relevant(i, teamKey, scope = 'general') {
   const t = TEAMS[teamKey];
   if (JUNK.test(i.title) || /podcast/i.test(i.url)) return false;
   if (scope === 'official') return true;
-  if (scope === 'mention') return mentions(`${i.title} ${i.summary}`, t.words);
+  if (scope === 'mention') return names(`${i.title} ${i.summary}`, t);
   // team feeds: a story naming the team stays; otherwise drop league-wide formats
-  if (scope === 'team-feed') return mentions(i.title, t.words) || !LEAGUEWIDE.test(i.title);
+  if (scope === 'team-feed') return names(i.title, t) || !LEAGUEWIDE.test(i.title);
   let path = '';
   try { path = new URL(i.url).pathname.toLowerCase(); } catch {}
-  return mentions(`${i.title} ${i.summary}`, t.words) || t.paths.some(p => path.split('/').includes(p));
+  return names(`${i.title} ${i.summary}`, t) || t.paths.some(p => path.split('/').includes(p));
 }
 const normUrl = u => { try { const x = new URL(u); x.search = ''; x.hash = ''; return x.toString().replace(/\/$/, ''); } catch { return u; } };
 const normTitle = t => t.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
@@ -209,7 +211,7 @@ export function espnKeep(a, team) {
   if (a.type === 'Media') return false; // video clips
   const url = a.links?.web?.href || '';
   if (/\/(betting|fantasy|espn-bet)\//.test(url) || JUNK.test(a.headline || '')) return false;
-  return teams.length <= 2 || mentions(`${a.headline} ${a.description || ''}`, team.words);
+  return teams.length <= 2 || names(`${a.headline} ${a.description || ''}`, team);
 }
 async function espn(teamKey) {
   const t = TEAMS[teamKey];
@@ -229,7 +231,7 @@ async function rss(source, teamKey) {
     try {
       const items = parseFeed(await get(url))
         .filter(i => onDomain(i.url, source.domains))
-        .filter(i => relevant(i, teamKey, filter ? 'general' : source.scope) && (!filter || mentions(`${i.title} ${i.summary}`, t.words)));
+        .filter(i => relevant(i, teamKey, filter ? 'general' : source.scope) && (!filter || names(`${i.title} ${i.summary}`, t)));
       if (items.length) return { url, items };
       errors.push(`${url}: no matching items`);
     } catch (e) { errors.push(`${url}: ${e.message}`); }
