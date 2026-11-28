@@ -1,9 +1,9 @@
 // Views: Cleveland (default) and Bay Area (?view=bayarea), chosen from the header title.
 const { test, expect, ready } = require('./helpers');
 
-const BAY = ['Warriors', '49ers', 'Giants', 'Sharks', 'Athletics', 'Raiders', 'Valkyries', 'Stanford'];
+const BAY = ['Warriors', '49ers', 'Giants', 'Sharks', 'Athletics', 'Valkyries', 'Stanford'];
 
-test('Bay Area view shows its six teams and its own title', async ({ page }) => {
+test('Bay Area view shows its seven teams and its own title', async ({ page }) => {
   await page.goto('/?view=bayarea#/');
   await ready(page, '.quick');
   await expect(page).toHaveTitle('My Sports · Bay Area');
@@ -62,11 +62,11 @@ test('the bayarea/ shortcut forwards to the Bay Area view', async ({ page }) => 
 test('news in each view covers only that view\'s teams', async ({ page }) => {
   const now = Date.now();
   const item = (team, title) => ({ team, source: 'espn', sourceName: 'ESPN', title, url: `https://example.org/${team}`, published: new Date(now - 60e3).toISOString(), summary: '', image: '' });
-  const body = JSON.stringify({ updated: new Date(now).toISOString(), sources: [], items: [item('browns', 'Browns story'), item('giants', 'Giants story'), item('raiders', 'Raiders story')] });
+  const body = JSON.stringify({ updated: new Date(now).toISOString(), sources: [], items: [item('browns', 'Browns story'), item('giants', 'Giants story'), item('raiders', 'Raiders story'), item('sharks', 'Sharks story')] });
   await page.route(/raw\.githubusercontent\.com\/.*news\.json/, r => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body }));
   await page.goto('/?view=bayarea#/');
   await ready(page, '.latest');
-  await expect(page.locator('.latest .ltitle')).toHaveText(['Giants story', 'Raiders story']);
+  await expect(page.locator('.latest .ltitle')).toHaveText(['Giants story', 'Sharks story']);
   await page.goto('/#/');
   await ready(page, '.latest');
   await expect(page.locator('.latest .ltitle')).toHaveText(['Browns story']);

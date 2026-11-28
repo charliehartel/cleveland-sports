@@ -139,7 +139,7 @@ base('MLB.com drops league-wide pieces but keeps team stories; team-site picks c
   plainExpect(relevant(it('Rookie DeLauter a first-time winner of Silver Slugger Award', 'https://www.mlb.com/guardians/news/z'), 'guardians', 'team-feed')).toBe(true);
   plainExpect(relevant(it('Guardians add trio of Top 30 prospects to 40-man roster', 'https://www.mlb.com/guardians/news/z'), 'guardians', 'team-feed')).toBe(true);
   plainExpect(relevant(it("The A's need rotation help. Could one of these 5 arms deliver?", 'https://www.mlb.com/athletics/news/z'), 'athletics', 'team-feed')).toBe(true);
-  plainExpect(relevant(it('Expert Game Picks: Raiders or Browns?', 'https://www.raiders.com/news/x'), 'raiders', 'official')).toBe(false);
+  plainExpect(relevant(it('Expert Game Picks: 49ers or Browns?', 'https://www.49ers.com/news/x'), 'niners', 'official')).toBe(false);
 });
 
 base('collector tells the SF Giants from the NY Giants', async () => {

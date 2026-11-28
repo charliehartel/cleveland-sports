@@ -185,12 +185,12 @@ test('preview milestones: skips out players and negative paces, counts this game
 test('a game between two of my teams shows once and under both team filters', async ({ page }) => {
   const r = await page.evaluate(() => {
     const ev = id => ({ id, date: new Date(Date.now() + 2 * 864e5).toISOString(), competitions: [{ status: { type: { state: 'pre' } }, competitors: [
-      { homeAway: 'home', team: { id: '13', abbreviation: 'LV', displayName: 'Las Vegas Raiders' } }, { homeAway: 'away', team: { id: '25', abbreviation: 'SF', displayName: 'San Francisco 49ers' } }] }] });
-    const a = { key: 'niners', league: 'nfl' }, b = { key: 'raiders', league: 'nfl' };
+      { homeAway: 'home', team: { id: '11', abbreviation: 'ATH', displayName: 'Athletics' } }, { homeAway: 'away', team: { id: '26', abbreviation: 'SF', displayName: 'San Francisco Giants' } }] }] });
+    const a = { key: 'giants', league: 'mlb' }, b = { key: 'athletics', league: 'mlb' };
     const games = mergeGames([[norm(ev('1'), a), norm(ev('2'), a)], [norm(ev('1'), b)]]);
-    return { n: games.length, keys: games.find(g => g.id === '1').keys, niners: buckets(games, 'niners').upcoming.length, raiders: buckets(games, 'raiders').upcoming.map(g => g.id) };
+    return { n: games.length, keys: games.find(g => g.id === '1').keys, giants: buckets(games, 'giants').upcoming.length, athletics: buckets(games, 'athletics').upcoming.map(g => g.id) };
   });
-  expect(r).toEqual({ n: 2, keys: ['niners', 'raiders'], niners: 2, raiders: ['1'] });
+  expect(r).toEqual({ n: 2, keys: ['giants', 'athletics'], giants: 2, athletics: ['1'] });
 });
 
 test('requests time out instead of hanging, and one league scoreboard request is shared', async ({ page }) => {

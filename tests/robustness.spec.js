@@ -6,25 +6,25 @@ const { test, expect, ready } = require('./helpers');
 const json = (r, body, status = 200) => r.fulfill({ status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(body) });
 const noNews = page => page.route(/raw\.githubusercontent\.com\/.*news\.json/, r => r.fulfill({ status: 404, headers: { 'access-control-allow-origin': '*' }, body: 'Not Found' }));
 
-// 49ers at Raiders in two days, as both teams' schedules list it
+// Giants at Athletics in two days, as both teams' schedules list it
 const shared = () => ({ id: '401999001', date: new Date(Date.now() + 2 * 864e5).toISOString(), competitions: [{ status: { type: { state: 'pre' } }, broadcasts: [], competitors: [
-  { homeAway: 'home', team: { id: '13', abbreviation: 'LV', displayName: 'Las Vegas Raiders', shortDisplayName: 'Raiders' } },
-  { homeAway: 'away', team: { id: '25', abbreviation: 'SF', displayName: 'San Francisco 49ers', shortDisplayName: '49ers' } }] }] });
+  { homeAway: 'home', team: { id: '11', abbreviation: 'ATH', displayName: 'Athletics', shortDisplayName: 'Athletics' } },
+  { homeAway: 'away', team: { id: '26', abbreviation: 'SF', displayName: 'San Francisco Giants', shortDisplayName: 'Giants' } }] }] });
 
-test('Bay Area home: 49ers vs Raiders is one card, under both filters, from one NFL scoreboard request', async ({ page }) => {
-  let nflBoards = 0;
+test('Bay Area home: Giants vs Athletics is one card, under both filters, from one MLB scoreboard request', async ({ page }) => {
+  let mlbBoards = 0;
   await noNews(page);
   await page.route(/site\.api\.espn\.com/, r => {
     const u = r.request().url();
-    if (/football\/nfl\/teams\/(sf|lv)\/schedule\?seasontype=2/.test(u)) return json(r, { events: [shared()] });
-    if (/football\/nfl\/scoreboard$/.test(u)) nflBoards++;
+    if (/baseball\/mlb\/teams\/(sf|ath)\/schedule\?seasontype=2/.test(u)) return json(r, { events: [shared()] });
+    if (/baseball\/mlb\/scoreboard$/.test(u)) mlbBoards++;
     return json(r, { events: [] });
   });
   await page.goto('/?view=bayarea#/');
   await ready(page, '.card');
   await expect(page.locator('.card')).toHaveCount(1);
-  expect(nflBoards).toBe(1);
-  for (const team of ['raiders', 'niners']) {
+  expect(mlbBoards).toBe(1);
+  for (const team of ['athletics', 'giants']) {
     await page.locator(`[data-filter="${team}"]`).click();
     await expect(page.locator('.card')).toHaveCount(1);
   }

@@ -16,7 +16,7 @@
   --bg:#f6f5f2;--surface:#ffffff;--surface-2:#f0eee9;--border:#e2dfd8;--text:#1b1a18;--muted:#6b675f;--faint:#9a958b;
   --accent:#e4572e;--live:#d7263d;--good:#1f8a4c;--warn:#b45309;--focus:#2563eb;
   --cavs:#860038;--browns:#ff3c00;--guardians:#00385d;
-  --warriors:#1d428a;--niners:#aa0000;--sharks:#006d75;--giants:#e3521b;--athletics:#0f5a3c;--raiders:#5d6166;--valkyries:#6f4fa0;--stanford:#8c1515;
+  --warriors:#1d428a;--niners:#aa0000;--sharks:#006d75;--giants:#e3521b;--athletics:#0f5a3c;--valkyries:#6f4fa0;--stanford:#8c1515;
   --mets:#ff5910;--nygiants:#0b2265;--knicks:#006bb6;--yankees:#0c2340;--jets:#125740;
   --shadow:0 1px 2px rgba(0,0,0,.05),0 2px 8px rgba(0,0,0,.04);
   --field:#2f7d3a;--field-line:rgba(255,255,255,.55);--zone:#1b1a18;
@@ -25,7 +25,7 @@
   --bg:#121212;--surface:#1c1c1e;--surface-2:#26262a;--border:#333338;--text:#f1efe9;--muted:#a7a39a;--faint:#77746d;
   --accent:#ff7a50;--live:#ff4d61;--good:#4cc27e;--warn:#f5a524;--focus:#7aa2ff;
   --cavs:#c23a6e;--browns:#ff6a33;--guardians:#4d8fc4;
-  --warriors:#5b8ee6;--niners:#e0484d;--sharks:#2bb3bd;--giants:#fd7a45;--athletics:#3aa874;--raiders:#a5acaf;--valkyries:#b38fcf;--stanford:#e0484d;
+  --warriors:#5b8ee6;--niners:#e0484d;--sharks:#2bb3bd;--giants:#fd7a45;--athletics:#3aa874;--valkyries:#b38fcf;--stanford:#e0484d;
   --mets:#ff7a3d;--nygiants:#6f8fe0;--knicks:#f58426;--yankees:#8fa3c7;--jets:#4fb37a;
   --shadow:none;--field:#24612d;--zone:#f1efe9;
 }}
@@ -33,7 +33,7 @@
   --bg:#121212;--surface:#1c1c1e;--surface-2:#26262a;--border:#333338;--text:#f1efe9;--muted:#a7a39a;--faint:#77746d;
   --accent:#ff7a50;--live:#ff4d61;--good:#4cc27e;--warn:#f5a524;--focus:#7aa2ff;
   --cavs:#c23a6e;--browns:#ff6a33;--guardians:#4d8fc4;
-  --warriors:#5b8ee6;--niners:#e0484d;--sharks:#2bb3bd;--giants:#fd7a45;--athletics:#3aa874;--raiders:#a5acaf;--valkyries:#b38fcf;--stanford:#e0484d;
+  --warriors:#5b8ee6;--niners:#e0484d;--sharks:#2bb3bd;--giants:#fd7a45;--athletics:#3aa874;--valkyries:#b38fcf;--stanford:#e0484d;
   --mets:#ff7a3d;--nygiants:#6f8fe0;--knicks:#f58426;--yankees:#8fa3c7;--jets:#4fb37a;
   --shadow:none;--field:#24612d;--zone:#f1efe9;
 }
@@ -336,7 +336,6 @@ const VIEWS = {
     { key:'giants',    label:'Giants',    league:'mlb', sport:'baseball',   abbr:'sf',  id:'26', color:'var(--giants)' },
     { key:'sharks',    label:'Sharks',    league:'nhl', sport:'hockey',     abbr:'sj',  id:'18', color:'var(--sharks)' },
     { key:'athletics', label:'Athletics', league:'mlb', sport:'baseball',   abbr:'ath', id:'11', color:'var(--athletics)' },
-    { key:'raiders',   label:'Raiders',   league:'nfl', sport:'football',   abbr:'lv',  id:'13', color:'var(--raiders)' },
     { key:'valkyries', label:'Valkyries', league:'wnba', sport:'basketball', abbr:'gs',  id:'129689', color:'var(--valkyries)' },
     { key:'stanford',  label:'Stanford',  league:'college-football', sport:'football', abbr:'stan', id:'24', color:'var(--stanford)' },
   ]},
@@ -534,7 +533,7 @@ function bayPill(bay){
 const scoreboardCache = {};
 const sbQuery = league => league === 'college-football' ? '?groups=80' : ''; // FBS, not just the top 25
 const scoreboardPending = {};
-// Two of my teams in one league (49ers and Raiders) share one request instead of downloading the same scoreboard twice.
+// Two of my teams in one league (Giants and Athletics) share one request instead of downloading the same scoreboard twice.
 function leagueScoreboard(t){
   return scoreboardPending[t.league] ||= getJSON(`${API}/${t.sport}/${t.league}/scoreboard${sbQuery(t.league)}`)
     .then(d => { scoreboardCache[t.league] = d; return d; })
