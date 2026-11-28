@@ -1597,7 +1597,10 @@ function nhlStreaksFor(tid, aid, goalie, teamRank){
   }
   const l5 = evs.slice(0, 5);
   // a big last 5 counts even if a point streak just started (a 1- or 2-game streak isn't listed on its own)
-  if (pts < 3 && l5.length === 5 && sum(5, 'points') >= 7) out.push({ hot:true, kind:'last5', text:`${sum(5, 'points')} points in his last 5 games` });
+  const l5pts = sum(5, 'points'), l5games = l5.filter(e => N(e, 'points') > 0).length;
+  if (pts < 3 && l5.length === 5 && l5pts >= 6) out.push({ hot:true, kind:'last5', text:`${l5pts} points in his last 5 games` });
+  // scoring in most games without an unbroken streak
+  else if (pts < 3 && l5.length === 5 && l5games >= 4) out.push({ hot:true, kind:'last5', text:`points in ${l5games} of his last 5 games (${l5pts} total)` });
   return out;
 }
 // Goalies to check: the preview's goalie list, or (once the game starts) each team's goalies with games this season
