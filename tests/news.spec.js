@@ -152,3 +152,77 @@ base('collector tells the SF Giants from the NY Giants', async () => {
   plainExpect(relevant(it('New York Giants fire offensive coordinator'), 'nygiants')).toBe(true);
   plainExpect(relevant(it('SF Giants hire new hitting coach'), 'nygiants')).toBe(false);
 });
+
+base('collector retains recent news for failed team sources and clears stale status on recovery', async () => {
+  const { collect } = await import('../scripts/news.mjs');
+  const now = Date.now();
+  const published = days => new Date(now - days * 864e5).toISOString();
+  const article = (team, source, title, age) => ({
+    team, source, title, published:published(age), url:`https://www.cleveland.com/${encodeURIComponent(title)}`,
+  });
+  const previous = [
+    article('browns', 'cleveland', 'Browns roster update', 2),
+    article('browns', 'cleveland', 'Expired Browns coverage', 15),
+    article('browns', 'espn', 'Browns roster update', 3),
+    article('cavs', 'espn', 'Previous Cavaliers coverage', 3),
+    article('guardians', 'removed-outlet', 'Removed feed coverage', 2),
+  ];
+  const originalFetch = globalThis.fetch;
+  let recovered = false;
+  globalThis.fetch = async url => {
+    if (url.includes('/basketball/nba/news?team=5&')) {
+      return Response.json({ articles:[{
+        categories:[{ type:'team', teamId:'5' }], headline:'New Cavaliers coverage',
+        links:{ web:{ href:'https://www.espn.com/cavaliers/example' } }, published:published(0),
+      }] });
+    }
+    if (recovered && url.includes('cleveland.com/arc/outboundfeeds/rss/category/browns/')) {
+      return new Response(`<item><title>Browns roster update</title><link>https://www.cleveland.com/browns/updated</link><pubDate>${published(0)}</pubDate></item>`);
+    }
+    return new Response('', { status:503 });
+  };
+  try {
+    const outage = await collect(previous);
+    plainExpect(outage.items.map(i => [i.title, !!i.stale])).toEqual([
+      ['New Cavaliers coverage', false], ['Browns roster update', true],
+    ]);
+    const brownsSource = data => data.sources.find(s => s.team === 'browns' && s.id === 'cleveland');
+    plainExpect(brownsSource(outage)).toMatchObject({ ok:false, count:0, staleCount:1 });
+    const repeated = await collect(outage.items);
+    plainExpect(repeated.items.find(i => i.stale)?.published).toBe(published(2));
+    recovered = true;
+    const recovery = await collect(repeated.items);
+    plainExpect(recovery.items.filter(i => i.team === 'browns')).toEqual([
+      plainExpect.objectContaining({ title:'Browns roster update', published:published(0), url:'https://www.cleveland.com/browns/updated' }),
+    ]);
+    plainExpect(recovery.items.some(i => i.stale)).toBe(false);
+    plainExpect(brownsSource(recovery)).toMatchObject({ ok:true, count:1 });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+base('collector shares a fallback RSS response across team-specific filters', async () => {
+  const { collect } = await import('../scripts/news.mjs');
+  const originalFetch = globalThis.fetch;
+  let requests = 0;
+  globalThis.fetch = async url => {
+    if (url !== 'https://www.nbcsportsbayarea.com/feed/') return new Response('', { status:503 });
+    requests++;
+    const published = new Date().toISOString();
+    return new Response(`<rss><channel>
+      <item><title>Warriors win at home</title><link>https://www.nbcsportsbayarea.com/warriors/example</link><pubDate>${published}</pubDate></item>
+      <item><title>Sharks win on the road</title><link>https://www.nbcsportsbayarea.com/sharks/example</link><pubDate>${published}</pubDate></item>
+    </channel></rss>`);
+  };
+  try {
+    const result = await collect();
+    plainExpect(requests).toBe(1);
+    plainExpect(result.items.map(i => [i.team, i.title]).sort()).toEqual([
+      ['sharks', 'Sharks win on the road'],
+      ['warriors', 'Warriors win at home'],
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

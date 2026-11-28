@@ -78,8 +78,9 @@ test('NBA team stats: ratings with league ranks and a last-10 view', async ({ pa
   await page.goto('/#/t/nba/5/stats');
   await ready(page, '.tile.ranked');
   await expect(page.locator('.tile.ranked .tl')).toContainText(['Offensive rating', 'Defensive rating', 'Net rating', 'Pace']);
-  const ranks = await page.locator('.tile.ranked .rk').allTextContents();
-  expect(ranks.length).toBe(12);
+  const rankBadges = page.locator('.tile.ranked .rk');
+  await expect(rankBadges).toHaveCount(12);
+  const ranks = await rankBadges.allTextContents();
   for (const r of ranks) expect(r).toMatch(/^\d+(st|nd|rd|th)$/);
   await page.locator('[data-rmode="last10"]').click();
   await expect(page.locator('.ratehead + .tiles + .note')).toContainText(/Last \d+ games \(\d+–\d+\)/, { timeout: 60_000 });
