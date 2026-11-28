@@ -3181,13 +3181,14 @@ function timeAgo(iso){
   if (m < 24*60) return `${Math.round(m / 60)}h ago`;
   return fmtDay(new Date(iso));
 }
+const staleNewsBadge = i => i.stale ? '<span class="npay">From previous update</span>' : '';
 const TEAM_LABEL = Object.fromEntries(TEAMS.map(t => [t.key, t.label]));
 function newsItem(i, showTeam){
   const team = TEAMS.find(t => t.key === i.team);
   return `<a class="news" href="${esc(safeUrl(i.url))}" target="_blank" rel="noopener" style="--tc:${team?.color || 'var(--accent)'}">
     ${safeUrl(i.image) ? `<img class="nthumb" src="${esc(safeUrl(i.image))}" alt="" loading="lazy">` : `<span class="nthumb ph"><span>${esc(i.sourceName)}</span></span>`}
     <div class="nbody">
-      <div class="nmeta"><span class="nsrc src-${esc(i.source)}">${esc(i.sourceName)}</span>${showTeam && team ? `<span class="nteam" style="--tc:${team.color}">${esc(team.label)}</span>` : ''}<span>${esc(timeAgo(i.published))}</span>${i.paywall ? '<span class="npay">Subscriber</span>' : ''}</div>
+      <div class="nmeta"><span class="nsrc src-${esc(i.source)}">${esc(i.sourceName)}</span>${showTeam && team ? `<span class="nteam" style="--tc:${team.color}">${esc(team.label)}</span>` : ''}<span>${esc(timeAgo(i.published))}</span>${i.paywall ? '<span class="npay">Subscriber</span>' : ''}${staleNewsBadge(i)}</div>
       <div class="ntitle">${esc(i.title)}</div>
       ${i.summary ? `<div class="nsum">${esc(i.summary)}</div>` : ''}
     </div></a>`;
@@ -3211,7 +3212,7 @@ function newsBlock({ team, limit, home }){
     if (tops.length) {
       latest = `<div class="box latest"><h3>Latest from each team</h3>${tops.map(({ t, i }) => `<a class="lrow" style="--tc:${t.color}" href="${esc(safeUrl(i.url))}" target="_blank" rel="noopener">
           <img class="llogo" src="${logoSrc(t, false)}" alt="">
-          <div class="lbody"><div class="nmeta"><span class="nteam">${esc(t.label)}</span><span class="nsrc">${esc(i.sourceName)}</span><span>${esc(timeAgo(i.published))}</span>${i.paywall ? '<span class="npay">Subscriber</span>' : ''}</div>
+          <div class="lbody"><div class="nmeta"><span class="nteam">${esc(t.label)}</span><span class="nsrc">${esc(i.sourceName)}</span><span>${esc(timeAgo(i.published))}</span>${i.paywall ? '<span class="npay">Subscriber</span>' : ''}${staleNewsBadge(i)}</div>
           <div class="ltitle">${esc(i.title)}</div></div></a>`).join('')}</div>`;
       const used = new Set(tops.map(x => x.i.url));
       items = items.filter(x => !used.has(x.url));
@@ -3223,10 +3224,11 @@ function newsBlock({ team, limit, home }){
     `<button class="chip" data-nsrc="${esc(id)}" aria-pressed="${newsState.source === id}">${esc(name)}</button>`).join('')}</div>` : '';
   const inView = x => TEAMS.some(t => t.key === x.team) && (!team || x.team === team);
   const failed = (newsState.data.sources || []).filter(x => !x.ok && inView(x));
-  const okNames = [...new Set((newsState.data.sources || []).filter(x => x.ok && x.count && inView(x)).map(x => x.name))];
-  return head + chips + latest + (shown.length ? `<div class="newslist">${shown.map(i => newsItem(i, !team)).join('')}</div>` : `<div class="empty">No recent stories${newsState.source !== 'all' ? ' from this source' : ''}.</div>`)
+  const sourceNames = [...new Set((newsState.data.sources || []).filter(x => ((x.ok && x.count) || x.staleCount) && inView(x)).map(x => x.name))];
+  const refreshNote = newsState.error ? '<div class="note">News refresh failed. Showing the previous update.</div>' : '';
+  return head + refreshNote + chips + latest + (shown.length ? `<div class="newslist">${shown.map(i => newsItem(i, !team)).join('')}</div>` : `<div class="empty">No recent stories${newsState.source !== 'all' ? ' from this source' : ''}.</div>`)
     + (items.length > shown.length && home ? `<button class="iconbtn more" data-nmore>Show more news</button>` : '')
-    + `<div class="note">From ${esc(okNames.join(', ') || 'no sources yet')}.${failed.length ? ` Not reachable right now: ${esc([...new Set(failed.map(x => x.name))].join(', '))}.` : ''}</div>`;
+    + `<div class="note">From ${esc(sourceNames.join(', ') || 'no sources yet')}.${failed.length ? ` Not reachable right now: ${esc([...new Set(failed.map(x => x.name))].join(', '))}.` : ''}</div>`;
 }
 function wireNews(){
   document.querySelectorAll('[data-nsrc]').forEach(b => b.onclick = () => {
