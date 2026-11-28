@@ -321,3 +321,27 @@ for (const [name, hash, failedStatus] of [['Home', '#/', 503], ['Team news', '#/
     await plainExpect(notice).toHaveCount(0);
   });
 }
+
+base('collector keeps only the configured sport from a college athletics feed', async () => {
+  const { collect } = await import('../scripts/news.mjs');
+  const when = new Date().toUTCString();
+  const item = (title, sport, slug) => `<item><title>${title}</title><link>https://gostanford.com/news/2026/11/27/${slug}</link><pubDate>${when}</pubDate><sports>${sport}</sports></item>`;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async url => url.startsWith('https://gostanford.com/rss')
+    ? new Response(`<rss><channel>${item('Home Slate Wraps Up With SMU', 'Football', 'smu')}${item('Stanford Drops Game One', "Women's Basketball", 'wbb')}${item('Marinos Goal Sends Cardinal to Third Round', "Men's Soccer", 'soccer')}</channel></rss>`)
+    : new Response('', { status: 503 });
+  try {
+    const data = await collect([]);
+    plainExpect(data.items.filter(i => i.source === 'gostanford').map(i => [i.team, i.title])).toEqual([['stanford', 'Home Slate Wraps Up With SMU']]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+base('every Bay Area team has news beyond ESPN', async () => {
+  const { RSS_SOURCES } = await import('../scripts/news.mjs');
+  for (const team of ['warriors', 'niners', 'giants', 'sharks', 'athletics', 'valkyries', 'stanford']) {
+    const sources = RSS_SOURCES.filter(s => s.feeds[team]?.length).map(s => s.id);
+    plainExpect(sources.length, `${team}: ${sources.join(', ')}`).toBeGreaterThanOrEqual(2);
+  }
+});

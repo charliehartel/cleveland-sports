@@ -1,6 +1,6 @@
-// Collects Cleveland team news from a fixed list of trusted sources into one JSON file.
+// Collects team news for each view from a fixed list of trusted sources into one JSON file.
 // Run by .github/workflows/news.yml every 20 minutes; the app reads the result.
-// Only the sources listed here are ever included: no blogs, aggregators or fan sites.
+// Only the sources listed here are ever included: no aggregators or fan blogs.
 //
 // Usage: node scripts/news.mjs out/news.json
 
@@ -51,10 +51,11 @@ export const RSS_SOURCES = [
       cavs:      ['https://www.nytimes.com/athletic/rss/nba/cavaliers/', 'https://theathletic.com/rss/nba/cavaliers/'],
       guardians: ['https://www.nytimes.com/athletic/rss/mlb/guardians/', 'https://theathletic.com/rss/mlb/guardians/'],
       warriors:  ['https://www.nytimes.com/athletic/rss/nba/warriors/'],
-      niners:    ['https://www.nytimes.com/athletic/rss/nfl/49ers/', 'https://www.nytimes.com/athletic/rss/nfl/niners/', 'https://www.nytimes.com/athletic/rss/nfl/san-francisco-49ers/'],
-      giants:    ['https://www.nytimes.com/athletic/rss/mlb/giants/', 'https://www.nytimes.com/athletic/rss/mlb/sf-giants/', 'https://www.nytimes.com/athletic/rss/mlb/san-francisco-giants/'],
+      niners:    ['https://www.nytimes.com/athletic/rss/nfl/niners/'],   // /nfl/49ers/ and /nfl/san-francisco-49ers/ return 404
+      giants:    ['https://www.nytimes.com/athletic/rss/mlb/sf-giants/'], // /mlb/giants/ returns 404
       sharks:    ['https://www.nytimes.com/athletic/rss/nhl/sharks/'],
       athletics: ['https://www.nytimes.com/athletic/rss/mlb/athletics/'],
+      valkyries: ['https://www.nytimes.com/athletic/rss/wnba/valkyries/'],
       mets:      ['https://www.nytimes.com/athletic/rss/mlb/mets/'],
       nygiants:  ['https://www.nytimes.com/athletic/rss/nfl/giants/', 'https://www.nytimes.com/athletic/rss/nfl/ny-giants/'],
       knicks:    ['https://www.nytimes.com/athletic/rss/nba/knicks/'],
@@ -119,7 +120,23 @@ export const RSS_SOURCES = [
       giants:    ['https://www.nbcsportsbayarea.com/mlb/san-francisco-giants/feed/', { url: 'https://www.nbcsportsbayarea.com/feed/', filter: true }],
       sharks:    ['https://www.nbcsportsbayarea.com/nhl/san-jose-sharks/feed/', { url: 'https://www.nbcsportsbayarea.com/feed/', filter: true }],
       athletics: ['https://www.nbcsportsbayarea.com/mlb/oakland-athletics/feed/', { url: 'https://www.nbcsportsbayarea.com/feed/', filter: true }],
+      valkyries: ['https://www.nbcsportsbayarea.com/wnba/golden-state-valkyries/feed/', { url: 'https://www.nbcsportsbayarea.com/feed/', filter: true }],
     },
+  },
+  {
+    // Credentialed Sharks beat site; every story is about the Sharks. Some posts are for subscribers, but the feed doesn't say which.
+    id: 'sjhn', name: 'San Jose Hockey Now', domains: ['sanjosehockeynow.com'], scope: 'team-feed',
+    feeds: { sharks: ['https://sanjosehockeynow.com/feed/'] },
+  },
+  {
+    // Stanford's student newspaper: its football section.
+    id: 'stanforddaily', name: 'The Stanford Daily', domains: ['stanforddaily.com'], scope: 'team-feed',
+    feeds: { stanford: ['https://stanforddaily.com/category/sports/fall-sports/football-sports/feed/'] },
+  },
+  {
+    // Stanford Athletics (official). One feed covers every sport; each item names its sport, so keep football.
+    id: 'gostanford', name: 'GoStanford', domains: ['gostanford.com'], scope: 'official',
+    feeds: { stanford: [{ url: 'https://gostanford.com/rss?path=football', sport: 'Football' }] },
   },
   // ---- New York outlets ----
   // Tried and not usable: NY Daily News (refuses these requests, HTTP 403), SNY (no feeds) and the
@@ -160,6 +177,7 @@ export function parseFeed(xml) {
       summary: stripTags(desc).slice(0, 280),
       author: stripTags(tag(b, 'dc:creator') || tag(tag(b, 'author'), 'name') || tag(b, 'author')),
       image: img,
+      sport: stripTags(tag(b, 'sports')), // college athletics sites (Sidearm) tag each story with its sport
     };
   }).filter(i => i.title && i.url);
 }
@@ -234,10 +252,11 @@ async function rss(source, teamKey, loadFeed) {
   const errors = [];
   let reached = null; // a feed that loaded but had nothing about this team: quiet, not down
   for (const f of source.feeds[teamKey] || []) {
-    const { url, filter } = typeof f === 'string' ? { url: f, filter: false } : f;
+    const { url, filter, sport } = typeof f === 'string' ? { url: f, filter: false } : f;
     try {
       const items = (await loadFeed(url))
         .filter(i => onDomain(i.url, source.domains))
+        .filter(i => !sport || i.sport.toLowerCase() === sport.toLowerCase())
         .filter(i => relevant(i, teamKey, filter ? 'general' : source.scope) && (!filter || names(`${i.title} ${i.summary}`, t)));
       if (items.length) return { url, items };
       reached ||= url;
