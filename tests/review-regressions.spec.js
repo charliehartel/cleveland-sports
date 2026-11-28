@@ -1,4 +1,5 @@
 const { test, expect } = require('@playwright/test');
+const { withPairView } = require('./helpers');
 const nflSummary = require('./fixtures/nfl-live-summary.json');
 
 const espnAPI = /^https:\/\/(?:site|site\.web|sports\.core)\.api\.espn\.com\//;
@@ -293,22 +294,22 @@ test('Bay Area polls only scoreboards while schedules are fresh and keeps scores
   });
   await page.goto('/?view=bayarea#/');
   await expect(page.locator('.card')).toContainText('6');
-  expect([schedules, boards]).toEqual([14, 6]);
+  expect([schedules, boards]).toEqual([12, 6]);
   score = '7';
   await page.clock.runFor(30_100);
   await expect(page.locator('.card')).toContainText('7');
-  expect([schedules, boards]).toEqual([14, 12]);
+  expect([schedules, boards]).toEqual([12, 12]);
   score = '8';
   await page.clock.fastForward(300_100);
   await expect(page.locator('.card')).toContainText('8');
-  expect([schedules, boards]).toEqual([28, 18]);
+  expect([schedules, boards]).toEqual([24, 18]);
   offline = true;
   await page.getByRole('button', { name:'Refresh now' }).click();
   await expect(page.locator('#updated')).toHaveText('ESPN updates delayed');
   await expect(page.locator('.card')).toContainText('8');
   await expect(page.locator('.card .status-stale')).toContainText(/Bottom 7th · score as of \d/); // the card itself says its score is old
   await expect(page.locator('.card .status-live')).toHaveCount(0);
-  expect([schedules, boards]).toEqual([42, 24]);
+  expect([schedules, boards]).toEqual([36, 24]);
   offline = false;
   score = '9';
   await page.getByRole('button', { name:'Refresh now' }).click();
@@ -434,6 +435,7 @@ test('a corrected final from a refreshed schedule wins over an older cached scor
 });
 
 test('a corrected final from either tracked team updates their shared card', async ({ page }) => {
+  await withPairView(page);
   let outage = false;
   const result = score => ({
     id:EVENT,
@@ -451,7 +453,7 @@ test('a corrected final from either tracked team updates their shared card', asy
     : route.fulfill({ json:{ events:[result('5')] } }));
   await page.route(/\/mlb\/teams\/ath\/schedule\?seasontype=2$/, route =>
     route.fulfill({ json:{ events:[result(outage ? '6' : '5')] } }));
-  await page.goto('/?view=bayarea#/');
+  await page.goto('/?view=pair#/');
   const scores = page.locator('.card .sc');
   await expect(scores).toHaveText(['3', '5']);
 

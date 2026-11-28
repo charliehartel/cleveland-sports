@@ -1,9 +1,9 @@
 // Views: Cleveland (default) and Bay Area (?view=bayarea), chosen from the header title.
 const { test, expect, ready } = require('./helpers');
 
-const BAY = ['Warriors', '49ers', 'Giants', 'Sharks', 'Athletics', 'Valkyries', 'Stanford'];
+const BAY = ['Warriors', '49ers', 'Giants', 'Sharks', 'Valkyries', 'Stanford'];
 
-test('Bay Area view shows its seven teams and its own title', async ({ page }) => {
+test('Bay Area view shows its six teams and its own title', async ({ page }) => {
   await page.goto('/?view=bayarea#/');
   await ready(page, '.quick');
   await expect(page).toHaveTitle('My Sports · Bay Area');
@@ -70,6 +70,23 @@ test('news in each view covers only that view\'s teams', async ({ page }) => {
   await page.goto('/#/');
   await ready(page, '.latest');
   await expect(page.locator('.latest .ltitle')).toHaveText(['Browns story']);
+});
+
+test('a saved Athletics filter shows Bay Area news under All teams', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('teamFilter:bayarea', JSON.stringify('athletics')));
+  await page.route(/site\.api\.espn\.com/, r => r.fulfill({ json: { events: [] } }));
+  const published = new Date().toISOString();
+  const item = (team, title) => ({
+    team, title, published, source: 'espn', sourceName: 'ESPN', url: `https://example.org/${team}`,
+  });
+  await page.route(/raw\.githubusercontent\.com\/.*news\.json/, r => r.fulfill({ json: {
+    updated: published, sources: [],
+    items: [item('giants', 'Giants story'), item('sharks', 'Sharks story'), item('athletics', 'Athletics story')],
+  } }));
+  await page.goto('/?view=bayarea#/');
+  await expect(page.locator('[data-filter="all"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#home-news .latest .ltitle')).toHaveText(['Giants story', 'Sharks story'], { timeout: 3000 });
+  await expect(page.getByText('Athletics story')).toHaveCount(0);
 });
 
 test('box score lists my team first, even when it is the home team', async ({ page }) => {

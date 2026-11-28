@@ -138,7 +138,6 @@ base('MLB.com drops league-wide pieces but keeps team stories; team-site picks c
   plainExpect(relevant(it("Giants, Camilo Doval agree on one-year deal", 'https://www.mlb.com/giants/news/y'), 'giants', 'team-feed')).toBe(true);
   plainExpect(relevant(it('Rookie DeLauter a first-time winner of Silver Slugger Award', 'https://www.mlb.com/guardians/news/z'), 'guardians', 'team-feed')).toBe(true);
   plainExpect(relevant(it('Guardians add trio of Top 30 prospects to 40-man roster', 'https://www.mlb.com/guardians/news/z'), 'guardians', 'team-feed')).toBe(true);
-  plainExpect(relevant(it("The A's need rotation help. Could one of these 5 arms deliver?", 'https://www.mlb.com/athletics/news/z'), 'athletics', 'team-feed')).toBe(true);
   plainExpect(relevant(it('Expert Game Picks: 49ers or Browns?', 'https://www.49ers.com/news/x'), 'niners', 'official')).toBe(false);
 });
 
@@ -340,7 +339,7 @@ base('collector keeps only the configured sport from a college athletics feed', 
 
 base('every Bay Area team has news beyond ESPN', async () => {
   const { RSS_SOURCES } = await import('../scripts/news.mjs');
-  for (const team of ['warriors', 'niners', 'giants', 'sharks', 'athletics', 'valkyries', 'stanford']) {
+  for (const team of ['warriors', 'niners', 'giants', 'sharks', 'valkyries', 'stanford']) {
     const sources = RSS_SOURCES.filter(s => s.feeds[team]?.length).map(s => s.id);
     plainExpect(sources.length, `${team}: ${sources.join(', ')}`).toBeGreaterThanOrEqual(2);
   }
