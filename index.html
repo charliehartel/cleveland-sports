@@ -1911,7 +1911,7 @@ function pxMilestones(g){
   for (const t of pxSides(g)) {
     const injured = pxOutIds(g, t.id), seen = new Set();
     for (const p of pxMilestonePlayers(g, t.id)) {
-      if (seen.has(String(p.id))) continue;
+      if (seen.has(String(p.id)) || injured.has(String(p.id))) continue; // out players won't add to their totals tonight
       seen.add(String(p.id));
       const car = x.career[String(p.id)];
       if (!car) continue;
@@ -1924,7 +1924,6 @@ function pxMilestones(g){
         const next = (Math.floor(have / step) + 1) * step, need = next - have;
         let games;
         if (!rateKey) {
-          if (injured.has(String(p.id))) continue;
           games = need;
           if (need === 1) { out.push({ t, p, games:0, now:true, text:`Would play his ${ordinal(next)} career game tonight` }); continue; }
         } else {
@@ -1936,7 +1935,8 @@ function pxMilestones(g){
         }
         if (games > 5) continue;
         const fmtN = n => n.toLocaleString();
-        out.push({ t, p, games, text:rateKey ? `${fmtN(need)} ${label} from ${fmtN(next)} career ${label} · about ${games} game${games === 1 ? '' : 's'} at this season's pace` : `${need} games from ${fmtN(next)} career games` });
+        const one = { threes:'three', 'TD passes':'TD pass', 'rushing TDs':'rushing TD', 'receiving TDs':'receiving TD' }[label] || label.replace(/s$/, '');
+        out.push({ t, p, games, text:rateKey ? `${fmtN(need)} ${need === 1 ? one : label} from ${fmtN(next)} career ${label} · about ${games} game${games === 1 ? '' : 's'} at this season's pace` : `${need} games from ${fmtN(next)} career games` });
       }
     }
   }
