@@ -200,10 +200,9 @@ test('requests time out instead of hanging, and one league scoreboard request is
     await r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '{"events":[{"id":"x"}]}' }); });
   const r = await page.evaluate(async () => {
     const timedOut = await getJSON('https://site.api.espn.com/never-answers', { timeout: 500 }).then(() => 'answered', e => e.message);
-    const t = { league: 'nfl', sport: 'football' };
-    const [a, b] = await Promise.all([leagueScoreboard(t), leagueScoreboard(t)]);
+    const [a, b] = await Promise.all([leagueScoreboard('nfl'), leagueScoreboard('nfl')]);
     const mapped = await Promise.all(['https://site.api.espn.com/football/nfl/scoreboard'].map(getJSON)); // .map passes an index, which must not become a time limit
-    await leagueScoreboard(t); // after the first settles, a fresh request
+    await leagueScoreboard('nfl'); // after the first settles, a fresh request
     return { timedOut, same: a === b, ids: a.events.map(e => e.id), mapped: mapped[0].events.length };
   });
   expect(r).toEqual({ timedOut: 'timed out', same: true, ids: ['x'], mapped: 1 });

@@ -8,15 +8,16 @@ const { test: base, expect } = require('@playwright/test');
 // relay checks ESPN's header itself: any ESPN endpoint the app calls that web pages aren't allowed
 // to read is reported as a problem, which fails the test, just as a phone's browser would block it.
 const ESPN_API = /(site|site\.web|sports\.core)\.api\.espn\.com/;
+const DEPLOYED_ORIGIN = 'https://charliehartel.github.io';
 const UA = 'my-sports-tests/1.0 (+https://github.com/charliehartel/my-sports)';
 async function relay(page, problems = []) {
   // ESPN's main API plus the two the hockey preview uses (core: rosters and league ranks; site.web: player game logs)
   await page.route(ESPN_API, async route => {
     try {
-      const r = await fetch(route.request().url(), { headers: { 'user-agent': UA, origin: 'http://127.0.0.1:4173' }, signal: AbortSignal.timeout(25000) });
+      const r = await fetch(route.request().url(), { headers: { 'user-agent': UA, origin: DEPLOYED_ORIGIN }, signal: AbortSignal.timeout(25000) });
       const headers = {};
       const acao = r.headers.get('access-control-allow-origin');
-      if (acao === '*' || acao === 'http://127.0.0.1:4173') headers['access-control-allow-origin'] = acao;
+      if (acao === '*' || acao === DEPLOYED_ORIGIN) headers['access-control-allow-origin'] = '*';
       else problems.push(`ESPN doesn't allow web pages to read ${route.request().url()} (no Access-Control-Allow-Origin header)`);
       await route.fulfill({ status: r.status, contentType: r.headers.get('content-type') || 'application/json', headers, body: Buffer.from(await r.arrayBuffer()) });
     } catch { await route.abort(); }
